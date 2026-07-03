@@ -1,5 +1,5 @@
-# SECTION 1 — Project Convergence
-We are Team Convergence, a team of three students from St. Francis Schools and Colleges in Sara-i-alamgir, Pakistan, competing in the WRO 2026 Future Engineers category. For this challenge, we developed an autonomous 1:16 scale self-driving car that independently navigates a three-lap track, avoids obstacles, and parks itself without any remote control. 
+# SECTION 1 — Project Zero Error
+We are Team Zero Error, a team of three students from St. Francis Schools and Colleges in Sara-i-alamgir, Pakistan, competing in the WRO 2026 Future Engineers category. For this challenge, we developed an autonomous 1:16 scale self-driving car that independently navigates a three-lap track, avoids obstacles, and parks itself without any remote control. 
 
 # Section 2 — The Challenge
 **Competition Overview**
@@ -30,21 +30,20 @@ The total evaluation comprises a maximum of 122 points, distributed across the f
 # SECTION 3 — The Team
 **Student Biographies**
 - Abiha Zainab
-   - Assigned Layer: *Brain*
-   - Role Description: Responsible for the robot's logic and decision-making processes, implementing state machines to dictate autonomous behavior.
+   - Assigned Role: *Software* 
+   - Role Description: : Responsible for architecting the vehicle's autonomous navigation logic and decision-making frameworks. Implements robust finite state machines (FSM) to handle dynamic real-time track environments, integrates sensor fusion algorithms, and optimizes steering control feedback loops for precise lane-keeping and obstacle avoidance.
    - Technical Interest: Focused on advanced software development, control algorithms, and optimizing system logic.
 
-
 - Tawassal Zahra
-   - Assigned Layer: *Body*
-   - Role Description: Manages the physical chassis assembly and mechanical integration, including the microcontroller, servos, motors, and structural hardware.
-   - Technical Interest: Interested in exploring mechanical engineering principles, structural integrity, and robust hardware design.
+   - Assigned Layer: *Hardware*
+   - Role Description: Responsible for the physical chassis assembly, structural integrity, and mechanical integration of the vehicle. Manages the layout and secure mounting of the microcontroller, drive motors, steering servos, and power distribution systems, ensuring a robust and reliable hardware platform for autonomous testing.
+   - Technical Interest:Interested in exploring mechanical engineering principles, chassis dynamics, and robust hardware design.
  
      
 - Marva Irfan
-   - Assigned Layer: *Senses*
-   - Role Description: Oversees environmental perception systems, managing data input from components like ToF sensors, IMUs, and encoder odometry while maintaining comprehensive project documentation.
-   - Technical Interest: Aiming to deepen understanding of sensor fusion, data acquisition, and physical hardware deployment.
+   - Assigned Layer: *Documentation*
+   - Role Description:Responsible for authoring the comprehensive technical documentation and managing data-logging protocols. Oversees the integration of environmental perception records—tracking data inputs from ToF sensors, IMUs, and encoder odometry—ensuring a well-documented and clear architectural record of the vehicle's design and testing performance. 
+   - Technical Interest:Aiming to deepen understanding of engineering documentation standards, sensor data log analysis, and physical hardware deployment structures.
      
 Coaching & Guidance
 
