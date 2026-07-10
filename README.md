@@ -155,8 +155,7 @@ models/ – Stores the 3D-printing and laser-cutting design files used to fabric
 **t-photos/** – Features a collection of official and casual photographs documenting our team throughout the project.
 # Project Team Photos:
    ## Our Team Members:
-   <img width="250"  alt="image" src="https://github.com/user-attachments/assets/96e58d9f-c717-41da-b9e8-fdeeb896548c" />
-     <br>
+  
      <br>
    <img width="250"  alt="image" src="https://github.com/user-attachments/assets/c9df0817-d718-4fe2-9a3a-0ed28814bbd9" />
 
