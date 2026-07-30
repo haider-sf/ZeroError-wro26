@@ -553,4 +553,577 @@ single most important unmeasured number on the vehicle.
 
 ---
 
-<!-- END OF PART 1 — Tawassal Zahra (Body / Hardware). Part 2 continues below. -->
+
+
+# SECTION 5 — How It Works (three-layer architecture)
+
+Our car is organised into three layers, and each member of the team owns one. Splitting the system
+this way lets each of us become the expert on our part, keeps the parts testable on their own, and
+makes the whole system easier to debug. We call the three layers the **Senses**, the **Brain** and
+the **Body** — by analogy with how a person navigates: you sense the world, your brain decides
+what to do, and your body carries it out.
+
+- **The Senses layer** measures the world around the car. It gathers how far away the walls are,
+  which direction the car is facing, and how far it has travelled. Wall distance comes from the
+  time-of-flight sensors; heading comes from the IMU; distance travelled comes from the wheel
+  encoder. The camera also belongs to this layer, adding the ability to see colour — distinguishing
+  red and green pillars and reading the boundary lines on the mat. The Senses layer's job is to
+  turn all of this into clean, usable information and pass it on.
+
+- **The Brain layer** makes decisions. It takes information from the Senses layer and works out
+  what to do next: stay centred in the corridor, recognise that a corner is coming and turn, count
+  laps, decide which side to pass a pillar, and run the parking manoeuvre. The Brain is built as a
+  state machine — the car is always in one defined state, and it moves between states based on what
+  the sensors report. We kept this modular so a new behaviour can be added as a new state without
+  rewriting everything, which matters because the rules note that a **surprise rule is expected in
+  the 2026 season** (Rule §6) and we cannot plan for it in advance.
+
+- **The Body layer** carries out decisions. It sets the steering servo to the angle the Brain asked
+  for and drives the motor at the requested speed, within safe limits built into its own code — the
+  steering never exceeds the mechanical end-stops and the motor duty is capped. It also reports
+  back what it is doing, so the rest of the system knows the car's actual state.
+
+**How the layers work together.** The three layers form a continuous loop:
+
+*Senses measure → Brain decides → Body acts → (repeat)*
+
+Because the layers communicate through clear, simple hand-offs — the Senses give readings, the
+Brain gives commands — each can be developed and tested separately and then connected. This
+separation is also how we divide the work as a team.
+
+```
+      ┌──────────────────────────────────────────────┐
+      │   BRAIN     state machine, lap count, plan   │   Abiha
+      ├──────────────────────────────────────────────┤
+      │   SENSES    wall angle, offset, pillars      │   Nukhba
+      ├──────────────────────────────────────────────┤
+      │   BODY      steering angle, motor duty       │   Tawassal
+      └──────────────────────────────────────────────┘
+```
+
+**Interface rule the team follows:** a module may only be changed by its owner, and only its
+*public functions* are used by other modules. If the Brain needs something from the Body layer, the
+request is for a function signature, not a code edit. This is what makes three people working in
+parallel possible without constant breakage.
+
+## Module map
+
+```
+src/
+├── pico/
+│   ├── main.py               Entry point; the fast control loop
+│   ├── drive.py              Motor: duty clamping, direction, stop
+│   ├── steering.py           Servo: angle -> pulse, end-stop enforcement
+│   ├── tof.py                VL53L1X init, XSHUT sequence, addressing, reads
+│   ├── imu.py                BNO055 heading
+│   ├── encoder.py            Pulse counting -> distance
+│   ├── comms.py              Serial protocol, Pico side
+│   └── calibrate_servo.py    Interactive calibration tool
+└── pi/
+    ├── main.py               Entry point; strategy loop
+    ├── comms.py              Serial protocol, Pi side
+    ├── vision.py             Camera capture, pillar colour, line crossings
+    ├── state_machine.py      Challenge state machines
+    ├── planner.py            Turn decisions, pillar side, parking sequence
+    └── logger.py             Run logging for post-test analysis
+```
+
+## Pi ↔ Pico serial protocol `PENDING`
+
+Our first real integration milestone. Design intent recorded before implementation:
+
+- **Line-oriented ASCII, not binary.** Slower and larger, but a human can read the link with a
+  serial monitor. During bring-up, debuggability beats efficiency. This is an explicit **prototype
+  shortcut** — if bandwidth ever becomes a constraint we would move to a packed binary format, but
+  at our loop rates we do not expect to need it.
+- **Pico → Pi:** a periodic telemetry line with distances, heading and encoder count.
+- **Pi → Pico:** a command line with target steering angle and target speed.
+- **Watchdog on the Pico side.** If no command arrives within a timeout, the Pico stops the motor
+  by itself. A vehicle that keeps driving after the Pi crashes is a vehicle that hits a wall at
+  full speed — and under Rule 9.18 wall contact in the Open Challenge is not a recoverable error.
+
+| Task | Status |
+| --- | --- |
+| Protocol format defined | `PENDING` |
+| Bidirectional link working | `PENDING` |
+| Watchdog tested by physically unplugging the link | `PENDING` |
+| End-to-end latency measured | `PENDING` |
+
+## Open Challenge state machine `PENDING`
+
+```
+        ┌──────────┐
+        │  INIT    │  calibrate, confirm sensors, wait for start
+        └────┬─────┘
+             v
+        ┌──────────┐   front distance still large
+        │ FOLLOW   │◄──────────────────────┐
+        │  WALL    │                       │
+        └────┬─────┘                       │
+             │ front distance < threshold  │
+             v                             │
+        ┌──────────┐                       │
+        │  TURN    │  heading change ~90°  │
+        │  CORNER  ├───────────────────────┘
+        └────┬─────┘  section counter increments
+             │
+             │ 3 laps complete and in the correct section
+             v
+        ┌──────────┐
+        │  STOP    │
+        └──────────┘
+```
+
+> **Flowchart to be added as an image:** `schemes/state_machine_open.png`
+> *(Required for Criterion 3 above level 2 — an ASCII sketch in the README is a placeholder, not a
+> substitute.)*
+
+**Wall following algorithm.** Using the paired-baseline geometry from Section 4f, we get two
+independent error signals: lateral offset from the wall, and heading angle relative to it. A
+proportional correction on offset alone oscillates — the car over-corrects, crosses the target and
+swings back. Adding the heading term damps this, because the controller can see it is already
+turning back before the offset error has closed.
+
+**Tuning approach:** start with heading correction only and confirm the car drives straight; then
+add offset correction and increase it until the car holds a lane without weaving. **One variable at
+a time** — this is a team rule, not a suggestion.
+
+**Edge cases we must handle explicitly:**
+
+| Edge case | Why it matters |
+| --- | --- |
+| Driving direction is randomised per round | The car must determine at the first corner whether it is running clockwise or anticlockwise and follow the appropriate wall |
+| Corridor width is randomised: 1000 mm or 600 mm | A wall-following setpoint tuned for 1000 mm will drive the car into a wall in a 600 mm round. The setpoint must be derived from measured corridor width, not hard-coded |
+| Rule 9.18 — no outer wall contact in the Open Challenge | Our lane setpoint should bias toward the inner wall, not centre |
+| Starting section is randomised | Lap counting must be relative to wherever the car started |
+
+The randomised corridor width is the edge case most likely to catch us out, because everything
+works in testing until the round where it does not.
+
+## Control algorithm choice `PENDING`
+
+We will start with **proportional only**, add a **derivative** term if the car oscillates, and add
+**integral only** if a persistent steady-state offset appears that P and D cannot remove.
+
+Reason for the ordering: an integral term accumulates error over time and can wind up during a
+turn, producing a delayed overshoot that looks like an unrelated bug. Adding terms one at a time,
+in response to an observed behaviour, keeps every gain traceable to the problem it solves.
+
+| Gain | Value | Justification |
+| --- | --- | --- |
+| `Kp_heading` | `[PENDING]` | `[PENDING]` |
+| `Kp_offset` | `[PENDING]` | `[PENDING]` |
+| `Kd` | `[PENDING]` | `[PENDING]` |
+
+## Obstacle Challenge strategy `PENDING`
+
+**Detection pipeline, geometry-primary:**
+
+1. **ToF geometry detects that a pillar exists** and estimates where it is — a distance return
+   significantly closer than the expected wall distance, over a narrow angular span.
+2. **The camera classifies its colour**, which determines the passing side: red on the right, green
+   on the left (Rule 9.19).
+3. **The planner offsets the wall-following setpoint** to route past the correct side, then returns
+   to the nominal lane.
+
+Rationale for geometry-primary is in Section 4f: a colour misread should degrade us to "obstacle
+present, side uncertain" rather than "no obstacle".
+
+**Rule-driven tuning targets:**
+
+- Rule 9.20 and 13.15 — a pillar may be touched only if it stays inside an **85 mm circle** around
+  its seat. The avoidance path is tuned for clearance margin, not minimum time. Scoring gives 10
+  points for three laps with no signs moved versus 8 with signs moved, so clearance is worth about
+  as much as a full lap.
+- Appendix A §5 — passing on the wrong side only ends the round once the car **completely crosses
+  the radius line** at that pillar. This gives us a recovery window: if the colour classification
+  flips late, the car can still correct before crossing.
+
+| Task | Status |
+| --- | --- |
+| Pillar detection from ToF geometry | `PENDING` |
+| Colour classification under bench lighting | `PENDING` |
+| Colour classification under varied lighting | `PENDING` |
+| Avoidance path that keeps pillars inside the 85 mm circle | `PENDING` |
+| Recovery to lane after passing | `PENDING` |
+| Late-correction behaviour before crossing the radius | `PENDING` |
+| Uncertain-colour fallback behaviour | `PENDING` |
+
+## Parallel parking `PENDING`
+
+The tightest geometric constraint in the project. Unlike corridor driving — where the car
+continuously corrects against wall references — parking is largely a committed sequence executed
+against measured distances.
+
+**The bay scales with our vehicle.** Rule §5: the parking lot is 200 mm wide and
+**1.5 × the length of our robot** long. A longer robot does not get an easier park — clearance
+stays at 0.5 × our own length either way — but a longer robot needs a larger turning radius to
+enter. **This is the argument for keeping the vehicle short.**
+
+**Rule 9.24.7: touching a parking lot limitation stops the round.** Unlike pillars, which tolerate
+movement inside an 85 mm circle, the parking limitations have zero tolerance. The manoeuvre must be
+tuned for clearance, and the rear ToF sensor exists for this reason.
+
+This is also why the wheel encoder matters. Open-loop timing is unreliable across battery states
+(Section 4f), and the bay tolerance is small enough that a few centimetres of distance error is the
+difference between 15 points and 7.
+
+**Approach:** a scripted manoeuvre parameterised by the **measured** minimum turning radius from
+Section 4d, with encoder-measured segment distances and IMU-measured heading changes as the
+termination condition for each phase.
+
+| Task | Status |
+| --- | --- |
+| Parking bay detected from ToF and magenta colour | `PENDING` |
+| Manoeuvre geometry derived from measured turning radius | `PENDING` |
+| Encoder-terminated segments implemented | `PENDING` |
+| Repeatability measured over 10 attempts | `PENDING` |
+
+---
+
+# SECTION 6 — Build, Flash and Run Instructions
+
+*(Required by the rules: the README must explain which modules the code consists of, how they
+relate to the electromechanical components, and the process to build, compile and upload the code
+to the vehicle's controllers.)*
+
+## Raspberry Pi 5 setup `IN PROGRESS`
+
+```bash
+# Flash Raspberry Pi OS Lite 64-bit to the SD card.
+# Enable SSH and set hostname and user during imaging.
+
+# Connect over SSH:
+ssh wrofes@wropi26.local
+
+# Project location on the Pi:
+cd /home/wrofes/wro-car
+```
+
+Recommended SSH config on the development machine:
+
+```
+Host wropi26
+    HostName wropi26.local
+    User wrofes
+    AddressFamily inet
+```
+
+Development uses VS Code Remote-SSH against the host alias `wropi26`, so we can edit files on the
+Pi with a normal editor instead of over a bare terminal.
+
+| Task | Status |
+| --- | --- |
+| OS install and headless SSH access | `DONE` |
+| Camera stack (Picamera2) verified | `DONE` |
+| Python dependency list (`requirements.txt`) | `PENDING` |
+| Autostart on boot for competition runs | `PENDING` |
+| Step-by-step reproduction guide for a fresh Pi | `PENDING` |
+
+## Raspberry Pi Pico setup `IN PROGRESS`
+
+1. Hold `BOOTSEL`, connect USB — the Pico mounts as a USB drive.
+2. Copy the MicroPython `.uf2` firmware onto it. It reboots into MicroPython.
+3. Copy the files from `src/pico/` to the Pico filesystem (Thonny or `mpremote`).
+4. `main.py` runs automatically at power-on.
+
+| Task | Status |
+| --- | --- |
+| MicroPython flashed | `DONE` |
+| PiicoDev VL53L1X driver installed | `DONE` |
+| Deployment script for all `src/pico/` files | `PENDING` |
+
+## Running the vehicle `PENDING`
+
+```bash
+cd /home/wrofes/wro-car
+python3 src/pi/main.py --challenge open      # Open Challenge
+python3 src/pi/main.py --challenge obstacle  # Obstacle Challenge
+```
+
+> Stop with `Ctrl+C`. Do **not** use `pkill -9` — force-killing leaves the camera resource locked
+> and requires a reboot.
+
+---
+
+# SECTION 7 — Testing Workflow
+
+## Testing principles
+
+1. **Measure before deciding.** No component is replaced and no architecture changed on a
+   suspicion. There must be a number first.
+2. **Change one variable at a time.** If two things change and behaviour improves, we have learned
+   nothing about which one mattered.
+3. **An unexpected reading is a reason to investigate, not a reason to buy.** We named the opposite
+   reflex "anxiety → addition" and we call it out by name when it appears.
+
+## Test levels
+
+| Level | What is tested | How |
+| --- | --- | --- |
+| Bench, component | One part in isolation | Car on blocks, single script, multimeter where relevant |
+| Bench, integration | Two subsystems talking | Wheels off the ground, serial monitor open |
+| Floor, straight line | Wall following on one wall | Two walls at a set spacing, one straight run |
+| Floor, single corner | Corner detection and 90° turn | One corner, both directions |
+| Full field | Complete challenge round | Full course, timed, repeated |
+| **Repeatability** | Consistency, not best case | Same test 10 times; record the failures |
+
+The repeatability level is the one teams skip and the one that decides competitions. A manoeuvre
+that works 7 times in 10 will fail during at least one scored round, and the International Final
+has at least four rounds.
+
+**Both corridor widths must be tested.** Our practice setup must be reconfigurable between 1000 mm
+and 600 mm, because the Open Challenge randomises it and a car tuned only at 1000 mm has never been
+tested in the condition that will beat it.
+
+## Metrics we record
+
+| Metric | Why it matters | Status |
+| --- | --- | --- |
+| Lateral deviation from setpoint, straight | Wall-following quality | `PENDING` |
+| Heading error after a 90° turn | Turn accuracy | `PENDING` |
+| Minimum clearance to outer wall (Rule 9.18) | Contact means zero | `PENDING` |
+| Lap time, 3 laps | Speed vs reliability trade | `PENDING` |
+| **Successful laps out of 10 attempts** | Reliability — the number that matters | `PENDING` |
+| Pillar passes on correct side, out of 10 | Obstacle logic accuracy | `PENDING` |
+| Pillars displaced outside the 85 mm circle | Direct scoring penalty | `PENDING` |
+| Parking success out of 10 | Parking repeatability | `PENDING` |
+| Battery voltage at end of a 3-lap run | Runtime margin | `PENDING` |
+
+Results are logged in `other/test_log.md`, dated, with the code version tested. A result without a
+version reference cannot be acted on later.
+
+## Debugging approach
+
+**Bottom-up, one layer at a time.** When the car misbehaves, the question is never "what is wrong
+with the robot" — it is "which layer is lying":
+
+1. **Is the raw sensor reading correct?** Print it. Compare against a tape measure.
+2. **Is the derived value correct?** Does the computed wall angle match the physical angle?
+3. **Is the decision correct?** Does the state machine choose the right state for that input?
+4. **Is the actuation correct?** Does the commanded steering angle produce that wheel angle?
+
+Most bugs that look like intelligence failures are layer-1 failures. Checking in this order is
+faster than guessing, every time.
+
+**Tools:** the MJPEG camera stream on port 8000, serial telemetry from the Pico, and run logs from
+`logger.py` for replaying a failed run afterwards.
+
+---
+
+# SECTION 8 — Engineering Decision Log
+
+| # | Decision | Reason | Trade-off accepted |
+| --- | --- | --- | --- |
+| 1 | Convert a 1:16 RC chassis rather than build from scratch | Team is code-strong and fabrication-new; a donor chassis provides rigid Ackermann geometry and bearings we cannot make | Inherit fixed wheelbase, track and steering throw |
+| 2 | Single drive motor, steering by front wheels | Rules prohibit differential/skid steering; the category focus is non-differential kinematics | No differential-steering tricks for tight turns |
+| 3 | Keep the yoke on its original pivot post; drive it via a spoke from a slotted servo horn | The post absorbs side-loads that would otherwise strip the servo gears; the slot absorbs arc mismatch | One more joint, therefore backlash |
+| 4 | Fix servo hunting in software, not by buying a stronger servo | Current measurement showed idle current at moderate angles — a limits problem, not a torque problem | None; the fix cost nothing |
+| 5 | Keep the stock motor | Fitting a larger motor would compromise chassis structure; torque demand is low | Limited top speed; the 5 V rating constrains the power design |
+| 6 | TB6612FNG over L298N | MOSFET switching: ~0.5 V drop vs ~2 V+, no heatsink, less mass | Lower continuous current rating; on a 5 V rail even 0.5 V is ~10 % of the supply |
+| 7 | Two separate batteries, three buck converters | Motor and servo transients must not reach the Pi 5 supply | More mass, more charging work |
+| 8 | Servo on the actuator pack, not the compute pack | The servo is the second-largest transient source; putting it on the logic rail would defeat the split | An extra buck converter |
+| 8a | Regulate the motor rail to 5 V rather than duty-capping a 12 V rail | A duty cap limits *average* voltage but not peaks; the 5 V motor still saw 11.1 V pulses, worst at stall. A regulated rail matches the motor's actual rating | One more converter; and a buck current-limits under surge where a battery would merely sag |
+| 8b | Separate bucks for motor and servo, not one shared on the actuator pack | Prevents a servo slam from disturbing the motor rail and vice versa | One extra part |
+| 8c | Reject ultrasonic as the primary wall sensor | A 15–30° cone cannot resolve two distinct wall patches, so the paired-baseline angle method is impossible; blocking pings and sequential firing would also cut our measured loop rate | Loses colour-independence — the walls are black and absorb IR |
+| 9 | Star ground topology | Prevents motor return current from shifting the sensor ground reference | More wiring discipline |
+| 10 | Reject USB power bank and 4S LiPo | Power bank gives a "soft" 5 V under spiky Pi load; 4S adds voltage the driver does not want and weight we do not need | BTS7960 kept in reserve if 4S ever becomes necessary |
+| 11 | Reject RPLidar A1 | Scan plane sits above the 100 mm wall height (Rules 13.3, 13.5) — it would see nothing | Lost a 360° map; discrete sensors must be placed deliberately |
+| 12 | VL53L1X in SHORT distance mode | 1.3 m covers both the 1000 mm and 600 mm corridors; short mode barely degrades under bright light, long mode degrades badly | None — we gave up range we never needed |
+| 13 | Paired dual-ToF baseline instead of a multizone sensor | Two points fully determine wall angle; simpler firmware and better per-reading SNR | Two mounts and two addresses per side |
+| 14 | Reflective optical encoder rather than timed open-loop or IMU integration | Timed control drifts with battery state; double-integrated acceleration drifts quadratically | Mechanical work: disc fabrication and mounting |
+| 15 | Split compute: Pi 5 for perception, Pico for control | OS scheduling jitter is unacceptable in a control loop; the Pico cannot run a camera | A serial link that can fail; two codebases |
+| 16 | Geometry-primary pillar detection, colour secondary | A colour misread degrades to "side unknown" rather than "no obstacle" — and Rule 13.18 warns venue colours will differ | More ToF processing work |
+| 17 | ASCII serial protocol rather than binary | Human-readable during bring-up | Larger and slower — a deliberate prototype shortcut |
+| 18 | Verify sensor part number by model ID register | L0X and L1X boards are visually identical and often mislabelled | One line of code; no downside |
+
+## Decisions reversed after measurement
+
+Recorded separately, because these are the entries that show the process working.
+
+| What we were about to do | What the measurement or check showed | Outcome |
+| --- | --- | --- |
+| Buy a stronger metal-gear servo | Servo current returned to idle at moderate angles — a software limits problem | Kept the SG90; end-stops in firmware |
+| Add a second Pico to split sensor reads | ~555 loops/sec measured with two sensors at 400 kHz | Second Pico unnecessary |
+| Split sensors across two I²C buses | Same measurement | Single bus retained |
+| Shorten the ToF timing budget for speed | Same measurement | Accuracy preserved; no compromise needed |
+| Buy an RPLidar A1 | Scan plane physically above the 100 mm wall height | Purchase avoided |
+| Reject multi-wheel-drive chassis on rule grounds | Re-reading the rule: it prohibits *differential drive*, not multiple driven wheels | Selection criteria corrected |
+| Document our ToF sensors as VL53L0X | Model ID register `0x010F` returned `0xEACC` — they are VL53L1X | Documentation and driver choice corrected |
+| Put the steering servo on the compute rail | Reviewing our own transient-isolation argument — the servo is a transient source | Servo moved to its own buck on the actuator pack |
+| Run the 5 V motor from a raw 11.1 V pack, capped at ~45 % duty | A duty cap sets average voltage, not peak. The motor would still see full 11.1 V during every ON pulse, and heating follows RMS current — worst at stall, where back-EMF is zero | Motor moved to its own regulated 5 V buck. Duty cycle now controls speed only, and our existing 5 V bench measurements became valid operating figures |
+| Fit ultrasonic sensors alongside the ToF array "for safety" | We had not yet measured whether the ToF actually struggles against black wall material. Adding hardware against an unmeasured worry is our named failure mode | Deferred pending the black-wall reflectivity test. If ToF reads reliably, no ultrasonic is fitted |
+
+The last three rows are corrections to our own earlier documentation. We record them rather than
+quietly editing them out, because a design history that contains no reversals is not a history of
+engineering.
+
+## Prototype shortcuts vs production-worthy design
+
+| Item | Classification | Note |
+| --- | --- | --- |
+| Two-battery split, three bucks, star ground | Production-worthy | We would keep this on any future vehicle |
+| Servo end-stops enforced in firmware | Production-worthy | Correct place for a mechanical constraint |
+| Bicycle spoke push-rod | Between the two | Functional and adjustable; a machined rod-end would be more repeatable |
+| ASCII serial protocol | Prototype shortcut | Deliberate, for debuggability |
+| Hard-coded calibration constants in source | Prototype shortcut | Should move to a config file |
+| MJPEG debug stream | Prototype tool | Must be disabled for competition runs — it costs CPU |
+
+---
+
+# SECTION 9 — Risk Register
+
+| Risk | Likelihood | Impact | Mitigation | Status |
+| --- | --- | --- | --- | --- |
+| Turning circle does not fit the 600 mm corridor | Unknown | Open Challenge not completable | Measure turning radius (Section 4d) — highest priority | `PENDING` |
+| Serial link between Pi and Pico drops | Medium | Vehicle uncontrolled | Pico-side watchdog stops the motor | `PENDING` |
+| Wall-following setpoint tuned only for 1000 mm | High | Fails in narrow rounds | Derive setpoint from measured corridor width; test both | `PENDING` |
+| Pi brown-out from motor or servo transient | Low | Round lost | Separate packs, separate bucks, star ground | `DONE` |
+| Colour thresholds fail at venue lighting (Rule 13.18) | High | Pillar passed on wrong side | Geometry-primary detection; on-site recalibration during testing rounds | `PENDING` |
+| Touching a parking limitation (Rule 9.24.7) | Medium | Round stopped | Rear ToF; clearance-tuned manoeuvre | `PENDING` |
+| Outer wall contact in Open Challenge (Rule 9.18) | Medium | Round zero | Bias lane setpoint toward the inner wall | `PENDING` |
+| IMU heading drift over 3 laps | Medium | Turn accuracy degrades | Correct against wall references | `PENDING` |
+| Motor stall current exceeds the buck's limit | Unknown | Motor rail collapses at breakaway | Measure stall current at 5 V; bulk capacitance at the driver; soft-start ramp | `PENDING` |
+| Black walls absorb IR, degrading ToF returns | Unknown | Wall following unreliable — affects every round | Measure against real wall material at 300/600/1000 mm before deciding on ultrasonic redundancy | `PENDING` |
+| Surprise rule announced (Rule §6) | Expected in 2026 | New behaviour required late | Modular state machine — a new behaviour is a new state | Design mitigates |
+| Time: integration starts too late | **High** | Untested system at competition | Serial link is the next milestone, ahead of new features | Active |
+
+The last row is the honest one. The dominant risk on this project is not a component — it is
+finishing subsystems that never get integrated in time to be tuned together.
+
+---
+
+# SECTION 10 — Current Status and Next Steps
+
+## Completed and verified
+
+- Motor driver bring-up: free-run current ~140 mA; minimum effective duty ~13 % at 5 V / 1 kHz —
+  and because the motor rail is now regulated to 5 V, these are valid operating figures
+- Servo calibration method established (current-draw criterion, both approach directions)
+- Steering conversion built and functional (servo in the old motor pocket, slotted horn, spoke to
+  the original yoke on its original pivot post)
+- Five VL53L1X sensors on one I²C bus, XSHUT-sequenced, readdressed `0x30`–`0x34`
+- Sensor part verified as VL53L1X by model ID register (`0x010F` = `0xEACC`)
+- Loop rate measured at ~555 loops/sec — retired three planned architectural workarounds
+- LiPo packs verified; charge and storage protocol established
+- Power architecture finalised: two packs, three bucks, star ground, servo on the actuator pack
+- Raspberry Pi 5 headless setup, SSH and Remote-SSH development working
+- Camera connected, MJPEG stream verified
+- Public GitHub repository with WRO template structure
+
+## Immediate next steps, in priority order
+
+1. **BNO055 IMU bring-up** — verify at `0x28`, confirm no bus conflict, read fused heading
+2. **Encoder hardware** — fabricate disc, verify contrast, relocate TCRT5000, calibrate mm/count
+3. **Turning radius measurement** — needs both of the above; **blocks the parking manoeuvre and
+   answers whether the car fits a 600 mm corridor**
+4. **Black-wall reflectivity test** — VL53L1X against real wall material at 300/600/1000 mm.
+   **Gates the ultrasonic redundancy decision; do not buy or fit anything before this runs**
+5. **Motor stall current at 5 V vs the buck's current limit** — completes the power budget and
+   tells us whether the motor rail can survive breakaway
+6. **Servo `LEFT_MAX` / `RIGHT_MAX`** — via the interactive calibration tool
+7. **Pi ↔ Pico serial link** — the first true integration milestone
+8. **Wall-following control loop** — the first behaviour that looks like a self-driving car
+
+## Commit schedule
+
+The rules require at least three commits, with the **third — no later than two weeks before the
+competition — being the one used for documentation scoring**. All important information must be
+present at that point.
+
+| Commit | Deadline | Content |
+| --- | --- | --- |
+| 1 | ≥2 months before | At least 1/5 of the final code; initial documentation |
+| 2 | ≥1 month before | Integrated system; expanded documentation |
+| 3 | ≥2 weeks before | **Scored commit** — complete code, photos, diagrams, videos, full README |
+
+## Required media
+
+| Item | Requirement | Status |
+| --- | --- | --- |
+| Vehicle photos: front, rear, left, right, top, bottom | Rules §7 | `PENDING` |
+| Team photo | Rules §7 | Uploaded |
+| Open Challenge video, ≥30 s autonomous driving | Rules §7 | `PENDING` |
+| Obstacle Challenge video, ≥30 s autonomous driving | Rules §7 | `PENDING` |
+| Wiring diagram | Criterion 2 | `PENDING` |
+| State machine flowchart | Criterion 3 | `PENDING` |
+| Mechanical layout drawing | Criterion 1 | `PENDING` |
+
+---
+
+# SECTION 11 — Repository Map
+
+**`src/`** — The codebase, split into `pico/` for low-level vehicle firmware and `pi/` for
+high-level computing and vision software. Module-by-module description in Section 5.
+
+**`schemes/`** — Electrical wiring diagrams, power distribution diagrams, sensor placement drawings
+and the software state machine flowchart.
+
+**`models/`** — 3D-printing and laser-cutting design files for fabricated parts (sensor brackets,
+electronics deck, encoder disc).
+
+**`t-photos/`** — Team photographs.
+
+## Our team members
+
+<br>
+<img width="250" alt="Team Zero Error" src="https://github.com/user-attachments/assets/c9df0817-d718-4fe2-9a3a-0ed28814bbd9" />
+<br>
+<br>
+<img width="250" alt="Team Zero Error" src="https://github.com/user-attachments/assets/1adec247-04cc-4810-a3d7-a5084946ddcb" />
+
+**`v-photos/`** — The six mandatory technical photographs showing the vehicle from every required
+angle, plus the steering iteration photographs referenced in Section 4c.
+
+**`video/`** — `video.md` with YouTube links demonstrating our autonomous runs for both challenges.
+
+**`other/`** — Auxiliary reference material: component datasheets, the calibration log
+(`calibration_log.md`), the test log (`test_log.md`), and software setup guides.
+
+---
+
+# SECTION 12 — What We Have Learned So Far
+
+**Measure before you decide.** Three separate times, a measurement removed a problem we were about
+to spend money or complexity solving. The servo did not need replacing. The second Pico was not
+needed. The LiDAR would not have worked at all. Each was found in under an hour.
+
+**An unexpected reading is a question, not an emergency.** Our named failure mode is
+"anxiety → addition": something reads oddly and the reflex is to buy or replace. Our guardrail is a
+rule — no mitigation without a measurement first.
+
+**Read the rule text, not a summary of it.** We rejected a valid chassis option on a misreading of
+the drive-configuration rule. The correct reading permits front, rear and four-wheel drive; only
+commanded left/right speed steering is prohibited.
+
+**Verify what you actually bought.** Our ToF sensors were documented as VL53L0X until we read the
+model ID register and found `0xEACC` — VL53L1X. Identical-looking parts with different datasheets
+are a trap.
+
+**Check that your design matches its own justification.** We built a two-battery system to keep
+transients away from the Pi, then wrote down a wiring plan that put the steering servo — a major
+transient source — on the compute rail. Re-reading our own reasoning caught it.
+
+**Understand the tool before architecting around it.** Our high loop rate was surprising until we
+understood that the driver's `read()` returns the latest background measurement rather than
+blocking for a fresh one. A whole timing concern rested on a wrong mental model of one function.
+
+**GPIO number is not physical pin number.** Costs an afternoon exactly once.
+
+**Read the line above the error.** An `unexpected indent` traceback almost always means the line
+*before* the flagged line is malformed. The interpreter reports where it noticed, not where the
+mistake is.
+
+**Stop processes gracefully.** `Ctrl+C`, not `pkill -9`.
+
+**Keep large files out of git.** Once a large file is in the history it cannot be cleanly removed.
+Photos are resized to ~1600 px and under 500 KB before committing.
+
+---
+
+*Team Zero Error — WRO 2026 Future Engineers, Self-Driving Cars.*
+*Maintained collaboratively: Tawassal owns the Body sections, Nukhba owns the Senses and Power
+sections, Abiha owns the Brain, testing and decision-log sections.*
+
+<!-- END OF PART 3 — Abiha Zainab (Brain / Software). End of README. -->
+
