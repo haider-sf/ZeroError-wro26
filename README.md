@@ -1126,4 +1126,581 @@ Photos are resized to ~1600 px and under 500 KB before committing.
 sections, Abiha owns the Brain, testing and decision-log sections.*
 
 <!-- END OF PART 3 — Abiha Zainab (Brain / Software). End of README. -->
+<!-- PART 2 — Nukhba Tanveer (Senses / Power / Documentation). Append below Part 1. -->
+
+## e) Power
+
+A stable power delivery system is critical for an autonomous vehicle. We designed a dual-battery
+power distribution setup so that the compute boards and the actuators cannot interfere with each
+other.
+
+**The problem power architecture has to solve.** A drive motor and a steering servo are both
+inductive loads that draw current in sudden steps. When the motor starts, or when the servo pushes
+against a load, current demand jumps within a fraction of a millisecond, and any supply shared
+with that load sees a voltage dip.
+
+A Raspberry Pi 5 responds to a voltage dip by browning out — which mid-round means the vehicle
+stops and the round is lost. Worse, it is an *intermittent* failure that only appears when the
+motor happens to draw hard at the wrong moment, so it survives bench testing and shows up on the
+field. The entire power design exists to make that failure impossible rather than unlikely.
+
+**Battery specifications:** two 3S LiPo packs, 11.1 V nominal / 12.6 V full, 3200 mAh, sourced
+locally from Electrobes Pakistan.
+
+### The rail layout
+
+```
+  BATTERY A  (3S LiPo)                    BATTERY B  (3S LiPo)
+   "compute pack"                          "actuator pack"
+        |                                        |
+  [ TPS5450 -> 5 V ]              [ TPS5450 -> 5 V ]   [ TPS5450 -> 5 V ]
+        |                                  |                     |
+   Raspberry Pi 5                    Drive motor            Steering servo
+   Pico + sensor logic              (via TB6612FNG)
+        |                                  |                     |
+        +------------------ STAR GROUND ---+---------------------+
+                        (single common ground point)
+```
+
+- **Rail 1 — compute.** Battery A through a TPS5450 buck to 5 V, feeding the Raspberry Pi 5, the
+  Pico, and the sensors. **Nothing that switches current abruptly is connected to this rail.**
+- **Rail 2 — drive.** Battery B through **its own TPS5450 buck to 5 V**, feeding the TB6612FNG,
+  which drives the motor. The motor is rated 5 V, so the rail is regulated to match it rather than
+  the motor being fed raw battery voltage and limited by duty cycle. The reasoning behind that
+  change is in Section 4d.
+- **Rail 3 — servo.** The steering servo has **its own TPS5450 buck, also fed from the actuator
+  pack** — a separate converter from the motor's.
+
+**Battery B therefore carries two independent 5 V converters**, one per actuator. Sharing a single
+converter between motor and servo would have coupled them: a servo slam would disturb the motor
+rail and a motor surge would disturb servo holding torque. Separate converters cost one extra part
+and remove that interaction entirely.
+
+**Why the servo is on the actuator battery and not with the logic.** This is a correction we made
+to our own earlier plan. The servo is the second-largest transient source on the vehicle after the
+motor — it slams to position against real mechanical load and draws a current spike each time. If
+it shares a rail with the Pi 5, it reintroduces exactly the brown-out risk the two-battery split
+was built to eliminate. Putting the servo on the compute rail would mean the design contradicted
+its own justification.
+
+Giving the servo a *separate buck* from the motor, rather than sharing one on the actuator pack,
+also keeps a servo spike from disturbing motor control and vice versa.
+
+**Why not one battery?** See the transient argument above. **Trade-off accepted:** two packs means
+more mass, more charging work, and one more thing that can be left flat before a round. We
+accepted it because brown-out failures are extremely hard to diagnose once they begin, and because
+two packs also let us run compute on the bench without touching the actuator pack.
+
+### Star ground
+
+All ground returns meet at **one physical point**. They are not daisy-chained board to board.
+
+Current flowing through a wire produces a voltage across that wire's resistance. If the Pi's
+ground return shares a length of wire with the motor's return, then every time the motor pulls
+hard, the Pi's ground reference *moves*. Sensor readings shift, I²C can corrupt, and the fault
+looks like a sensor problem when it is a wiring topology problem. A star ground means motor return
+current never flows through any conductor a sensor uses as its reference.
+
+### Why TPS5450 buck converters
+
+Fixed 5 V switching regulators, chosen over a linear regulator such as a 7805. A linear regulator
+dropping 12.6 V to 5 V wastes roughly 60 % of the energy as heat — unacceptable on a battery
+budget and a thermal problem in an enclosed chassis.
+
+> **Wiring caution for anyone reproducing this:** the `EN` (enable) pin is *float-to-run,
+> ground-to-stop*. It must **never** be tied to `VIN`. Doing so damages the part.
+
+**A consequence of regulating the motor rail that we had to think about.** A battery and a buck
+converter respond to a current surge in opposite ways. A battery **sags** — the voltage drops but
+current keeps flowing. A buck converter **current-limits, hiccups, or shuts down** — it defends
+itself rather than delivering.
+
+For the compute rail that is exactly what we want; a converter that refuses to deliver a fault
+current protects the Pi. For the motor rail it is a new risk: if motor stall current exceeds the
+converter's limit, the motor rail collapses at breakaway, which is precisely when the car needs
+current most.
+
+| Mitigation | Status |
+| --- | --- |
+| Measure stall current at 5 V and compare to the converter's rated limit | `PENDING` |
+| Bulk capacitance at the TB6612FNG input so the converter sees an averaged load | `PENDING` |
+| Firmware soft-start — ramp duty from the floor rather than stepping | `PENDING` |
+
+This is a trade we made knowingly: we exchanged a motor over-voltage risk (certain, cumulative,
+destroys the motor) for a rail-collapse risk (uncertain, recoverable, and testable in an afternoon).
+
+### Rejected power alternatives
+
+| Option | Why rejected |
+| --- | --- |
+| USB power bank for the Pi | Provides a "soft" 5 V that cannot handle the sudden spiky demand of a Pi 5 under load; many also cut out below a minimum draw |
+| 4S LiPo | Too much voltage for our motor driver setup, and unnecessary added weight. We keep a BTS7960 driver in reserve as a contingency if we ever need to move to 4S |
+| Single shared battery | Motor and servo transients would reach the Pi 5 supply |
+
+### Battery maintenance and charge protocol
+
+Charged with a SkyRC iMax B6 balance charger.
+
+| Setting | Value | Reason |
+| --- | --- | --- |
+| Mode | LiPo **BALANCE** | Charges each cell equally; without it cells drift apart and the pack degrades |
+| Current | 1.6 A (0.5 C) | Conservative rate, longer pack life than 1 C |
+| Cutoff | 12.60 V | 4.20 V per cell — full, not over |
+| Capacity backstop | 3500 mAh | The charger stops if it ever puts in more than the pack can hold — a fault detector |
+
+**Storage charge.** Packs sitting more than 2–3 days are brought to **3.80–3.85 V per cell**, not
+left full. A LiPo held at full charge degrades measurably faster. This is our default resting
+state.
+
+**Safety practice:** charge in a fire-safe container, never unattended, never a puffed pack.
+
+### Power budget `IN PROGRESS`
+
+| Consumer | Rail | Current | Status |
+| --- | --- | --- | --- |
+| Raspberry Pi 5, idle | A | `[PENDING]` | `PENDING` |
+| Raspberry Pi 5 + camera streaming | A | `[PENDING]` | `PENDING` |
+| Pico + sensors on I²C | A | `[PENDING]` | `PENDING` |
+| Drive motor, free-run | B | ~140 mA | `DONE` |
+| Drive motor, stall | B | `[PENDING]` | `PENDING` |
+| Servo, idle / holding | B | ~10–20 mA | `DONE` |
+| Servo, moving under load | B | `[PENDING]` | `PENDING` |
+| **Worst-case total** | | `[PENDING]` | `PENDING` |
+| **Predicted runtime per pack** | | `[PENDING]` | `PENDING` |
+
+Runtime matters practically: we need to know how many practice runs fit between charges, and
+whether a pack survives a full round with margin. The stall test also yields the pack's effective
+internal resistance from the voltage sag under load.
+
+### Connectors and wire gauge
+
+| Interface | Connector | Reason |
+| --- | --- | --- |
+| Battery to board | XT60 | High current, polarity-keyed, cannot be reversed |
+| Power distribution | KF301 5.08 mm screw terminal | Serviceable without soldering during debugging |
+| Signal lines | 2.54 mm screw terminal | Fine pitch for many low-current lines |
+
+| Function | Gauge |
+| --- | --- |
+| Motor | 14 AWG |
+| Compute feed | 16 AWG |
+| Rail taps | 18 AWG |
+| Signal | 22–24 AWG |
+
+Gauge follows from the star-ground argument: thick wire has low resistance, and low resistance
+means less voltage lost and less ground shift under load.
+
+> **Wiring diagram to be added:** `schemes/power_wiring.png`
+> Must show both packs, all three TPS5450 converters, the star ground point, and fusing.
+> *(Required for Criterion 2 above level 2.)*
+
+---
+
+## f) Sensors
+
+To navigate and track its own movement, the vehicle relies on spatial and positional sensors
+feeding data to the compute layer.
+
+### Sensor inventory
+
+| Sensor | Qty | Purpose | Status |
+| --- | --- | --- | --- |
+| **VL53L1X** time-of-flight | 6 | Wall distance and wall angle | 5 brought up `DONE`, 6th `PENDING` |
+| BNO055 IMU | 1 | Absolute heading | `IN PROGRESS` |
+| Reflective optical wheel encoder | 1 | Distance travelled | `PENDING` |
+| Raspberry Pi Camera Module 3 Wide | 1 | Pillar colour, line detection | `IN PROGRESS` |
+
+### Part verification — we have VL53L1X, not VL53L0X
+
+VL53L0X and VL53L1X breakout boards are visually identical and are frequently mislabelled by
+sellers. We verified ours by reading the **model ID register `0x010F`**, which returned
+**`0xEACC`** — confirming **VL53L1X**. The L0X returns a different value.
+
+This check takes one line of code and prevented us from working against the wrong datasheet. It
+also corrected our own early documentation, which described the parts as L0X.
+
+### Distance mode: SHORT — a configuration decision that matters
+
+| Mode | Nominal range | Behaviour under bright ambient light |
+| --- | --- | --- |
+| Long | up to ~4 m | Degrades severely — ambient light swamps the return signal |
+| Short | up to ~1.3 m | Negligible range loss |
+
+The competition corridor is 1000 mm wide, and narrows to 600 mm in some Open Challenge rounds.
+Both fit **entirely inside short mode's range**, so we get ambient-light robustness for free with
+no loss of usable range.
+
+This reframes a common complaint: "ToF sensors are unreliable under bright light" is usually a
+*configuration* problem, not a hardware limitation. Teams run long mode because it is the default,
+then blame the sensor. Given Rule 13.18 warns that venue conditions will differ from our workshop,
+this margin is worth having.
+
+**Driver: PiicoDev VL53L1X**, chosen for two specific features:
+- **Per-reading status flags** — we can distinguish a valid reading from a failed one instead of
+  treating a garbage value as a real distance.
+- **A working `change_addr()` method** — required for the multi-sensor scheme below.
+
+### Why ToF and not ultrasonic rangefinders
+
+Ultrasonic sensors such as the HC-SR04 are the cheapest and most familiar distance sensor
+available to us, and they were our first instinct. We rejected them as the primary wall sensor
+after reading through public repositories and documentation from previous Future Engineers seasons,
+where the same problems recur across teams.
+
+`[ADD CITATIONS: link the specific previous-season repositories and documentation we read. A judge
+weighs "we studied prior solutions and found a recurring failure" far more heavily than an
+unsourced claim, and it is evidence of engineering research rather than opinion.]`
+
+**The decisive argument — beam width breaks our wall-angle method.**
+
+Our entire wall-following strategy depends on the paired-baseline technique described below: two
+sensors on the same side, separated by a known distance, whose *difference* in reading gives the
+angle to the wall. This only works if each sensor measures a **distinct, narrow patch** of wall.
+
+An HC-SR04 emits a cone roughly 15–30° wide. At a 500 mm wall distance that cone is 130–270 mm
+across. Two ultrasonic sensors mounted 100 mm apart would have almost completely overlapping
+footprints — they would be measuring the same patch of wall and returning nearly the same number.
+The difference we need to extract would be buried in noise.
+
+Worse, an ultrasonic cone returns the distance to the **nearest object anywhere in the cone**, not
+the object straight ahead. Angled toward a wall, the sensor reports the closest point of the cone
+rather than the point in front of it, which is a systematic error in exactly the measurement we
+care about.
+
+**The rest of the comparison:**
+
+| | VL53L1X (ToF) | HC-SR04 (ultrasonic) |
+| --- | --- | --- |
+| Beam / field of view | Narrow, ~27°, and the region of interest can be narrowed further in software | Wide cone, ~15–30°, not adjustable |
+| Update rate | Continuous background measurement; we measured ~555 loops/sec for two sensors | Round-trip flight of sound: ~6 ms at 1 m plus settling, so tens of Hz at best |
+| Multiple sensors | Six share one I²C bus, addressed individually | Must be fired **sequentially** to avoid hearing each other's echoes — the rate divides by the sensor count |
+| Pin cost for 6 sensors | 2 pins (shared I²C) + 6 XSHUT | 12 pins, or extra multiplexing hardware |
+| Behaviour at an oblique angle | Degrades, but usable at short range | Sound reflects specularly off a smooth wall — the echo bounces away and returns nothing or a phantom long reading |
+| Physical size and mounting | Small, easy to aim within the 100 mm wall height | Bulky twin transducers, harder to package |
+
+The oblique-angle row is the same problem as the beam-width row seen from another direction. Both
+mean the sensor is least trustworthy when the car is angled to a wall — which is the one situation
+where we most need a correct reading.
+
+**The honest counter-argument, which we have not yet closed.** The competition walls are **black**
+(Rules 13.4, 13.6). Black surfaces absorb infrared, which reduces the return signal a ToF sensor
+depends on. Ultrasonic does not care about colour at all — sound reflects off a black wall exactly
+as it does off a white one.
+
+This is a genuine weakness in our choice and we will not know its size until we measure it.
+
+| Test | Status |
+| --- | --- |
+| VL53L1X reading against the **actual black wall material** at 300 / 600 / 1000 mm | `PENDING` |
+| Same test under bright ambient light | `PENDING` |
+| Reading validity rate (status flags) over 1000 samples against black wall | `PENDING` |
+
+If the L1X reads black wall material reliably at 1000 mm in short mode, our choice is confirmed.
+If it degrades, this becomes the argument for the redundancy discussed next.
+
+### Ultrasonic as a redundant sensor — under evaluation `PENDING`
+
+We are considering retaining **one** ultrasonic sensor, front-facing, as a redundant check rather
+than as a control input.
+
+**The argument for it.** Redundancy is only worth its cost when the backup fails *differently* from
+the primary. Two ToF sensors both fail on a black, oblique, brightly-lit wall. An ultrasonic
+sensor fails on soft or angled surfaces but is completely indifferent to colour and ambient light.
+That is genuine sensor diversity — different physics, different failure modes — rather than simply
+having two of something.
+
+**The arguments against it, which we are taking seriously.**
+
+- **It costs loop time.** An ultrasonic ping is blocking: the code must wait for the echo. At 1 m
+  that is roughly 6 ms, plus settling time before the next ping. Dropped naively into a control
+  loop that currently runs at ~555 Hz, a single sensor could cut our loop rate substantially — we
+  would be spending our best-measured asset to buy an unmeasured one.
+- **Redundancy without an arbiter is not redundancy.** If the ToF says 400 mm and the ultrasonic
+  says 700 mm, which does the car believe? Adding a second opinion with no rule for resolving
+  disagreement does not increase reliability; it adds a second thing that can be wrong, and a
+  branch in the code that has never been tested.
+- **This is our named failure mode.** Adding hardware because a reading *might* be bad, before
+  measuring whether it is bad, is exactly the "anxiety → addition" pattern we have caught ourselves
+  in three times already.
+
+**Our decision process, in order:**
+
+1. Run the black-wall reflectivity test above. **This gates everything.**
+2. If the ToF reads reliably against real wall material — no ultrasonic. The redundancy would be
+   solving a problem we proved we do not have.
+3. If the ToF degrades — the ultrasonic becomes justified, and the decision is then based on
+   evidence rather than worry.
+4. If we do fit one, define its role narrowly **before** wiring it: a **sanity check on the front
+   distance only**, read on a slow non-blocking timer, empowered to trigger an emergency stop when
+   it disagrees with the front ToF by more than a set threshold — but **never** used as an input to
+   the steering controller.
+
+Point 4 is the part that matters. A redundant sensor with a defined, narrow job and an explicit
+disagreement policy is an engineering decision. A spare sensor bolted on "just in case" is a
+liability with wires.
+
+### Why ToF and not a 360° LiDAR
+
+We evaluated an **RPLidar A1** and rejected it after a physical check, not on price.
+
+A 360° LiDAR would give a full distance map of the corridor from one device and would simplify
+perception considerably. The problem is geometric: the A1's scan plane sits at a fixed height above
+its mounting base, and in our chassis configuration that plane ends up **above the 100 mm wall
+height** specified in Rules 13.3 and 13.5.
+
+A scan plane passing over the walls sees nothing. The sensor would report open space in every
+direction while the vehicle drove into a wall. Lowering it enough to bring the plane under 100 mm
+was not achievable without conflicting with the chassis and the Rule 9.17 dimensional envelope.
+
+The decision was made by holding the part against the vehicle and measuring. It took ten minutes
+and avoided a wasted purchase.
+
+**Trade-off accepted:** discrete ToF sensors give distance in a few fixed directions rather than
+everywhere. We must choose those directions carefully, and we cannot detect an obstacle in a
+direction where we did not point a sensor.
+
+### Multi-sensor addressing on one I²C bus `DONE`
+
+Every VL53L1X powers up at the **same default I²C address**, so several on one bus collide. The
+solution uses the `XSHUT` (shutdown) pin:
+
+1. Hold all sensors in shutdown by pulling every `XSHUT` low.
+2. Release sensor 1 only. It appears at the default address. Reassign it to `0x30`.
+3. Release sensor 2. It appears at the now-free default address. Reassign it to `0x31`.
+4. Repeat for the remaining sensors.
+
+| Item | Assignment |
+| --- | --- |
+| I²C bus | I²C0, SDA = GP8, SCL = GP9 |
+| Bus speed | 400 kHz |
+| XSHUT control pins | GP10 – GP14 |
+| Assigned ToF addresses | `0x30`, `0x31`, `0x32`, `0x33`, `0x34` |
+| IMU on the same bus | expected at `0x28` — verification `PENDING` |
+
+> **Note we keep repeating to ourselves:** GPIO number is not physical pin number. `GP8` is not
+> pin 8. Read the pinout diagram every time.
+
+### Loop rate measurement — and the three complications it retired `DONE`
+
+Before designing around a timing assumption, we measured the actual read rate.
+
+**Result: approximately 555 loop iterations per second with two sensors on a 400 kHz bus.**
+
+We had expected far worse and had already sketched three architectural workarounds for the
+bottleneck we assumed existed:
+
+1. Add a **second Pico** to split sensor reading across two microcontrollers.
+2. Split the sensors across **two separate I²C buses**.
+3. Shorten the sensor **timing budget**, trading accuracy for speed.
+
+**All three were unnecessary.** One measurement retired all of them.
+
+**Why the rate is so high:** the PiicoDev `read()` call fetches the **most recent completed
+background measurement**. It does not block while a new measurement is taken — the sensor
+integrates continuously in hardware and the read is a register fetch. Our mental model, "reading a
+sensor means waiting for a measurement", was simply wrong for this part.
+
+**The lesson, recorded because it generalises:** we nearly added a second microcontroller, a second
+bus and an accuracy compromise to solve a bottleneck that did not exist. *Measure the thing before
+you architect around it.*
+
+### Sensor placement and the paired-baseline technique `PENDING`
+
+**The problem with a single side sensor.** One ToF pointed at a wall gives distance. It cannot
+distinguish "parallel to the wall at 200 mm" from "angled toward the wall, currently at 200 mm" —
+and those need opposite steering corrections. A controller using one sensor per side oscillates.
+
+**Solution: two sensors on the same side, separated by a known baseline.**
+
+```
+        wall
+  ======================
+      |         |
+      | d1      | d2          Sensors A and B, separation L
+  +---A---------B---+
+  |    vehicle      |
+  +-----------------+
+
+  heading error  ≈  atan( (d2 - d1) / L )
+  lateral offset ≈  (d1 + d2) / 2
+```
+
+Two numbers from two sensors: how far from the wall, and at what angle. The controller can then
+correct heading and offset independently, which is the difference between smooth wall following
+and weaving.
+
+**Why not a multizone sensor (VL53L5CX)?** One multizone sensor would also yield wall angle. We
+chose paired discrete sensors because the firmware is much simpler (two distance reads versus
+parsing a zone array), each discrete sensor puts its full optical budget into one spot giving
+better signal-to-noise per reading, and the task only requires the angle to a flat wall — which
+two points fully determine. The extra zones would be unused complexity.
+
+**Trade-off accepted:** two mounts and two addresses per side instead of one.
+
+**Planned placement:**
+
+| Position | Sensors | Purpose | Status |
+| --- | --- | --- | --- |
+| Left side, paired baseline | 2 | Left wall distance + angle | `PENDING` |
+| Right side, paired baseline | 2 | Right wall distance + angle | `PENDING` |
+| Front | 1 | Corner detection, stop distance | `PENDING` |
+| Rear | 1 | Parking and reversing reference | `PENDING` |
+
+The rear sensor exists specifically for the parking manoeuvre, where the vehicle reverses into a
+bay bounded by magenta limitations that Rule 9.24.7 forbids us to touch.
+
+Placement will be finalised from corridor geometry and confirmed by test, not guessed. The
+baseline separation `L` must be measured precisely once mounted — the angle calculation depends
+directly on it.
+
+> **Sensor placement diagram to be added:** `schemes/sensor_placement.png`
+> Top view with field-of-view cones and the baseline separation dimensioned.
+
+### BNO055 Inertial Measurement Unit `IN PROGRESS`
+
+The BNO055 performs sensor fusion **on-chip**, outputting absolute orientation rather than raw gyro
+and accelerometer data. That matters for a student team: implementing a stable complementary or
+Kalman filter from raw IMU data is a serious project in itself. Buying the fusion in silicon buys
+us weeks of schedule.
+
+**What we use it for:**
+- Heading during turns — the primary reference for "have I turned 90°?"
+- Heading hold on straights, combined with wall following
+- Arc angle for the turning-radius measurement in Section 4d
+
+**What we explicitly do not use it for:** distance, by double-integrating acceleration. Integrating
+noisy acceleration twice produces error that grows quadratically with time. This is a known dead
+end, not a tuning problem — which is why the encoder exists.
+
+| Task | Status |
+| --- | --- |
+| Verify presence at `0x28` on the shared bus | `PENDING` |
+| Confirm no conflict with ToF addresses `0x30`–`0x34` | `PENDING` |
+| Read fused heading at loop rate | `PENDING` |
+| Characterise drift over a 3-lap-duration run | `PENDING` |
+| Document the calibration ritual for competition day | `PENDING` |
+
+The drift characterisation matters because the state machine must not assume the IMU stays correct
+for a whole round. Wall references correct it.
+
+### Optical wheel encoder `PENDING`
+
+**Why we need one at all.** Two alternatives were considered and rejected:
+
+- **Timed open-loop control** ("drive forward for 1.2 seconds"). Distance covered in a fixed time
+  depends on battery state of charge. A routine tuned on a full pack under-runs on a half-empty
+  one — a silent failure that appears late in a round.
+- **Double-integrated IMU acceleration.** See above.
+
+**Chosen approach: a reflective optical encoder.** A disc with alternating light and dark radial
+sectors is fixed to the drive shaft, and a TCRT5000-style reflective sensor counts transitions.
+
+`[NOTE: earlier drafts described this as a slotted IR sensor. The chosen design is reflective —
+a printed disc read from one side — not a slotted disc passing through a gap. The two are different
+components and different mountings.]`
+
+Design notes:
+- **12–20 stripes.** Enough resolution for distance control, few enough to resolve cleanly at speed.
+- **Matte finish on the dark sectors.** Gloss black reflects specularly and can read as light at
+  the wrong angle. Matte is what makes the contrast reliable.
+- **Verify contrast before committing.** Read the raw sensor output across a slowly rotated disc
+  and confirm unambiguous light/dark separation *before* irreversible mechanical work.
+- **The TCRT5000 is an integrated emitter-detector package.** When relocating it from a breakout
+  board, desolder the entire block as one unit and extend it on four wires. Do not separate the
+  emitter and detector — their alignment and spacing are part of the design.
+
+| Task | Status |
+| --- | --- |
+| Disc fabricated | `PENDING` |
+| Contrast verified against raw sensor output | `PENDING` |
+| TCRT5000 desoldered and extended on wires | `PENDING` |
+| Mounted at correct standoff distance | `PENDING` |
+| Counts per revolution and mm per count calibrated | `PENDING` |
+
+### The camera `IN PROGRESS`
+
+Raspberry Pi Camera Module 3 Wide (`imx708_wide`). Connected and verified; an MJPEG stream runs via
+Picamera2 on port 8000, letting us see what the vehicle sees from a laptop during bench testing — a
+debugging capability, not a competition feature.
+
+**Pillar colour detection.** In the Obstacle Challenge the car must pass red pillars on their right
+and green pillars on their left (Rule 9.19). Distance sensors can detect that an obstacle is
+present but cannot tell red from green, and the correct side depends entirely on colour. The camera
+identifies each pillar's colour as the car approaches — red is RGB (238, 39, 55) and green is
+RGB (68, 214, 44) per Rules 13.21–13.22 — and reports colour and rough position to the Brain layer.
+
+**Deliberate design decision — geometry first, colour second.** The primary detection that a pillar
+*exists*, and where it is, comes from ToF geometry. The camera answers only "what colour is it".
+
+Colour thresholding is the least reliable part of any vision pipeline, and Rule 13.18 explicitly
+warns that venue colours may differ from specification. By making geometry primary, a colour
+misread degrades us to "obstacle detected, side uncertain" rather than "no obstacle detected". The
+first is recoverable; the second is a collision.
+
+**Line reading for lap counting.** The mat has orange and blue boundary lines 20 mm thick marking
+section divisions (Rule 13.9). The camera can detect these crossings, giving a reference for lap
+counting and for knowing which section the car is in. Line colours are specified in CMYK, which we
+must convert and then verify against the real mat rather than trusting the conversion.
+
+**Operational note:** stop the camera process with `Ctrl+C`. Force-killing with `pkill -9` leaves
+the camera resource locked and requires a reboot to clear. This cost us time once already.
+
+| Task | Status |
+| --- | --- |
+| Camera connected, stream verified | `DONE` |
+| Mast height and angle fixed | `PENDING` |
+| Colour thresholds characterised under varied lighting | `PENDING` |
+| Line crossing detection | `PENDING` |
+| Fusion with ToF pillar geometry | `PENDING` |
+
+---
+
+## g) Pin Assignment and Calibration Register
+
+| Function | Controller | Pin | Status |
+| --- | --- | --- | --- |
+| I²C0 SDA (ToF + IMU) | Pico | GP8 | `DONE` |
+| I²C0 SCL (ToF + IMU) | Pico | GP9 | `DONE` |
+| ToF XSHUT ×5 | Pico | GP10 – GP14 | `DONE` |
+| Steering servo PWM | Pico | `[PENDING]` | `PENDING` |
+| Motor PWM (TB6612FNG PWMA) | Pico | `[PENDING]` | `PENDING` |
+| Motor direction (AIN1 / AIN2) | Pico | `[PENDING]` | `PENDING` |
+| Motor driver STBY | Pico | `[PENDING]` | `PENDING` |
+| Encoder input | Pico | `[PENDING]` | `PENDING` |
+| Pi ↔ Pico serial (TX/RX) | Both | `[PENDING]` | `PENDING` |
+| Camera | Pi 5 | CSI | `DONE` |
+
+Every calibration procedure and its result is logged in `other/calibration_log.md` with a date, so
+any number in this document can be traced back to the test that produced it.
+
+| Calibration | Method | Status |
+| --- | --- | --- |
+| Servo centre and end-stops | Current-draw method, Section 4c | `PENDING` |
+| Motor minimum duty cycle | Step duty until motion | ~13 % at 5 V `DONE` |
+| ToF address assignment | XSHUT sequencing | `DONE` |
+| ToF offset and crosstalk | Known-distance reference target | `PENDING` |
+| Baseline separation `L` | Physical measurement after mounting | `PENDING` |
+| Encoder mm per count | Roll a measured distance, count pulses | `PENDING` |
+| IMU calibration state | BNO055 built-in routine | `PENDING` |
+| Camera colour thresholds | Sample pillars under varied lighting | `PENDING` |
+
+### Failure modes at the sensor and power layer
+
+| Failure mode | Effect | Mitigation | Status |
+| --- | --- | --- | --- |
+| Motor transient browns out the Pi | Round lost | Two packs, separate bucks, star ground | `DONE` |
+| Servo transient reaches compute rail | Round lost | Servo on its own buck off the actuator pack | `DONE` |
+| ToF returns invalid reading | Controller acts on garbage distance | Check PiicoDev status flag; hold last good value | `PENDING` |
+| Bright venue light degrades ToF | Range collapses | Short distance mode | `DONE` (config) |
+| Black wall absorbs IR, weakening ToF return | Wall distance unreliable | Measure against real wall material; ultrasonic redundancy only if measurement justifies it | `PENDING` |
+| Motor stall current exceeds buck limit | Motor rail collapses at breakaway | Measure stall current; bulk capacitance; soft-start ramp | `PENDING` |
+| I²C bus lockup | All sensors lost at once | Timeout detection, bus reset, re-run XSHUT init | `PENDING` |
+| IMU heading drift over 3 laps | Turns become inaccurate | Correct against wall references | `PENDING` |
+| Colour thresholds fail at venue (Rule 13.18) | Wrong pillar side chosen | Geometry-primary detection; on-site recalibration | `PENDING` |
+| Encoder disc contrast insufficient | No distance feedback | Verify contrast before final mounting | `PENDING` |
+| Pack flat mid-round | Round lost | Voltage monitoring and a pre-round checklist | `PENDING` |
+
+---
+
+<!-- END OF PART 2 — Nukhba Tanveer (Senses / Power / Documentation). Part 3 continues below. -->
 
