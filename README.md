@@ -104,11 +104,11 @@ Two constraints from this table shaped our design more than any other:
     </td>
     <td align="center">
       <img src="t-photos/tawassal-zahra.png" width="200" alt="Tawassal Zahra"><br>
-      <strong>Tawassal Zahra</strong><br>Body — Hardware
+      <strong>Tawassal Zahra</strong><br>Body — Hardware and Documentation
     </td>
     <td align="center">
       <img src="t-photos/nukhba-tanveer.png" width="200" alt="Nukhba Tanveer"><br>
-      <strong>Nukhba Tanveer</strong><br>Senses — Sensors, Power and Documentation
+      <strong>Nukhba Tanveer</strong><br>Senses — Sensors and Power
     </td>
   </tr>
 </table>
@@ -122,22 +122,36 @@ Two constraints from this table shaped our design more than any other:
     obstacle avoidance.
   - Technical interest: software development, control algorithms, and system logic.
 
-- **Tawassal Zahra — Body layer (Hardware)**
+- **Tawassal Zahra — Body layer (Hardware and Documentation)**
   - Responsible for the physical chassis, structural integrity, and mechanical integration.
     Manages the layout and mounting of the controllers, drive motor, steering servo, and power
-    distribution, and owns the steering conversion described in Section 4c.
+    distribution, and owns the steering conversion described in Section 4c. She also coordinates
+    the engineering documentation and integrates the team's approved material into this repository.
   - Technical interest: mechanical engineering principles, chassis dynamics, and robust hardware
     design.
 
-- **Nukhba Tanveer — Senses layer (Sensors, Power and Documentation)**
+- **Nukhba Tanveer — Senses layer (Sensors and Power)**
   - Owns the sensing and power subsystems: ToF sensor configuration and addressing, IMU
-    integration, encoder odometry, power distribution and wiring. Also owns the data-logging
-    protocol and the technical documentation record.
+    integration, encoder odometry, power distribution and wiring. She also owns the data-logging
+    protocol for sensor and power tests.
   - Technical interest: `[NUKHBA TO WRITE IN HER OWN WORDS — do not inherit the previous
     member's text. Judges may ask a student to explain their own subsystem.]`
 
 The three roles map directly onto the three layers described in Section 5 — Body, Senses and
 Brain. Each of us owns one layer end to end, from the hardware to the code that drives it.
+
+### Repository and documentation workflow
+
+Most commits in this repository were made through **Tawassal's student account**. While the team
+was learning Git, we chose a single-editor workflow to avoid merge and pull-request confusion:
+Abiha and Nukhba prepared and submitted material for their own layers, and Tawassal checked the
+formatting, integrated it into the shared document and committed the result.
+
+The Git commit author therefore identifies the **repository integrator**, not necessarily the sole
+author of every engineering decision in that commit. Technical ownership remains as listed above:
+Abiha owns Brain work, Nukhba owns Senses and Power work, and Tawassal owns Body work and
+documentation integration. To make shared authorship clearer, collaborative commits should name
+the contributing students in their descriptions or use `Co-authored-by` trailers where practical.
 
 **Coaching & Guidance**
 
@@ -1178,11 +1192,12 @@ Photos are resized to ~1600 px and under 500 KB before committing.
 ---
 
 *Team Zero Error — WRO 2026 Future Engineers, Self-Driving Cars.*
-*Maintained collaboratively: Tawassal owns the Body sections, Nukhba owns the Senses and Power
-sections, Abiha owns the Brain, testing and decision-log sections.*
+*Maintained collaboratively: Tawassal owns the Body sections and documentation integration,
+Nukhba owns the Senses and Power sections, and Abiha owns the Brain, testing and decision-log
+sections.*
 
 <!-- END OF PART 3 — Abiha Zainab (Brain / Software). End of README. -->
-<!-- PART 2 — Nukhba Tanveer (Senses / Power / Documentation). Append below Part 1. -->
+<!-- PART 2 — Nukhba Tanveer (Senses / Power). Append below Part 1. -->
 
 ## e) Power
 
@@ -1758,5 +1773,5 @@ any number in this document can be traced back to the test that produced it.
 
 ---
 
-<!-- END OF PART 2 — Nukhba Tanveer (Senses / Power / Documentation). Part 3 continues below. -->
+<!-- END OF PART 2 — Nukhba Tanveer (Senses / Power). Part 3 continues below. -->
 

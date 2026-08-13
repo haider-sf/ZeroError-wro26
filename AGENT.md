@@ -48,8 +48,8 @@ The team is building a **fully autonomous 1:16 scale self-driving car** that mus
 
 | Student | Layer | Responsibility |
 |---|---|---|
-| Tawassal Zahra | **Body** | Physical wiring, mechanical setup, chassis, steering linkage |
-| Nukhba Tanveer | **Senses** | Sensors, power, data logging, build documentation |
+| Tawassal Zahra | **Body** | Physical wiring, mechanical setup, chassis, steering linkage, documentation integration |
+| Nukhba Tanveer | **Senses** | Sensors, power, data logging |
 | Abiha Zainab | **Brain** | Code logic, state machine, unit testing |
 
 Coach: Haider (principal architect).
@@ -285,6 +285,9 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Team photos added 2026-08-13** — group photo and labelled portraits for Abiha Zainab,
   Tawassal Zahra and Nukhba Tanveer stored locally in `t-photos/`, indexed in its README and
   embedded in the main README.
+- [x] **Team roles and repository workflow clarified 2026-08-13** — Tawassal owns documentation
+  integration; Nukhba's profile is limited to Senses, Power and data logging. The README explains
+  that Tawassal made most commits as repository integrator for student-submitted work.
 - [x] Multiple git commits exist on `main` (mostly README / skeleton).
 - [x] **Steering build-process photos added 2026-08-13** — ten resized/source-compliant images in
   `v-photos/`, indexed in `v-photos/README.md`, with selected chronological evidence embedded in
