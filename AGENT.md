@@ -285,6 +285,8 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Team photos added 2026-08-13** — group photo and labelled portraits for Abiha Zainab,
   Tawassal Zahra and Nukhba Tanveer stored locally in `t-photos/`, indexed in its README and
   embedded in the main README.
+- [x] **Coach photo added 2026-08-13** — Haider Abbas's portrait is stored in `t-photos/` and
+  displayed with the Coaching & Guidance section.
 - [x] **Team roles and repository workflow clarified 2026-08-13** — Tawassal owns documentation
   integration; Nukhba's profile is limited to Senses, Power and data logging. The README explains
   that Tawassal made most commits as repository integrator for student-submitted work.

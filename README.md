@@ -173,6 +173,8 @@ responsibly while ensuring that we can explain and defend the system we build.
 
 **Coaching & Guidance**
 
+<img src="t-photos/coach-haider-abbas.png" width="240" alt="Haider Abbas, Team Zero Error coach">
+
 **Haider Abbas** provides organisational oversight and strategic guidance as the team coach. His
 role covers administrative facilitation and milestone tracking, ensuring that the student
 engineering team retains complete autonomy over both hardware fabrication and codebase execution.

@@ -8,5 +8,6 @@ These files provide the Rule 7 team photograph and labelled portraits used in th
 | `abiha-zainab.png` | Abiha Zainab — Brain layer |
 | `tawassal-zahra.png` | Tawassal Zahra — Body layer |
 | `nukhba-tanveer.png` | Nukhba Tanveer — Senses layer |
+| `coach-haider-abbas.png` | Haider Abbas — team coach |
 
 Added 2026-08-13. Each image is below 500 KB and no image exceeds 1600 px on its longest edge.
