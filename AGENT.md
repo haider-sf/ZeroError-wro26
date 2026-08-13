@@ -288,6 +288,9 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Team roles and repository workflow clarified 2026-08-13** — Tawassal owns documentation
   integration; Nukhba's profile is limited to Senses, Power and data logging. The README explains
   that Tawassal made most commits as repository integrator for student-submitted work.
+- [x] **AI-use disclosure added 2026-08-13** — README records the move from manual repository
+  updates to Cursor Agent and discloses AI-assisted code and writing, with student understanding,
+  testing, measurement and engineering ownership stated explicitly.
 - [x] Multiple git commits exist on `main` (mostly README / skeleton).
 - [x] **Steering build-process photos added 2026-08-13** — ten resized/source-compliant images in
   `v-photos/`, indexed in `v-photos/README.md`, with selected chronological evidence embedded in

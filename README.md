@@ -153,6 +153,24 @@ Abiha owns Brain work, Nukhba owns Senses and Power work, and Tawassal owns Body
 documentation integration. To make shared authorship clearer, collaborative commits should name
 the contributing students in their descriptions or use `Co-authored-by` trailers where practical.
 
+### Use of AI as an engineering and learning tool
+
+We initially updated the repository manually. As the project grew, we began using **Cursor Agent**
+to streamline repetitive repository work, organise documentation and accelerate parts of the
+coding and debugging workflow.
+
+This project includes **AI-assisted and AI-generated code and documentation text**. We use AI as a
+tool, not as a substitute for engineering ownership. The student responsible for each layer
+reviews the relevant output, understands how it works and remains responsible for testing it on
+the actual vehicle. Measurements, wiring checks, calibration results and design decisions are
+accepted only when the team can verify them; an AI suggestion is not treated as evidence.
+
+We began this project with roughly one year of microcontroller experience. AI helped us ask
+technical questions, study unfamiliar concepts, compare possible approaches, find faults and
+improve our writing. This accelerated our learning and deployment process while expanding our own
+knowledge and practical skills. The goal has never been to hide the use of AI, but to use it
+responsibly while ensuring that we can explain and defend the system we build.
+
 **Coaching & Guidance**
 
 **Haider Abbas** provides organisational oversight and strategic guidance as the team coach. His
