@@ -305,15 +305,25 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
   5 V / 1 kHz. Main README updated from the earlier ~13% value.
 - [x] **Pico pin assignment table updated 2026-08-13** — imported tests confirm GP0 servo,
   GP2–GP5 motor, GP8/GP9 I2C, GP10–GP14 XSHUT and GP15 run button; GP16 encoder remains planned.
+- [x] **Integration session logs reconciled 2026-08-13** — README now records the BNO055 `0x28`
+  cold-boot truth table, five-ToF shared-bus proof, IMU-last construction rule, quiet-bus
+  calibration, saved offsets, stationary drift, heading sign/wrap and wheels-up interference data.
+- [x] **First floor and load tests documented 2026-08-13** — one-button untethered run, 410 mm
+  worst-case coast at 40%, 20% breakaway failure, failed wall-stop root cause, three stall-voltage
+  trials and the fail-safe-over-fail-forward rule.
+- [x] **ToF characterization data added 2026-08-13** — 500/1000/1200 mm sample counts, means,
+  noise, spread and sign-changing error; 27° cone diagnosis and status-flag limitations included.
 
 ### 7.2 In progress
 
 - [ ] **README Section 4 structure** — `## e) Power` and `## f) Sensors` currently sit *after*
   Section 12 (end of file), not under Section 4 with a–d. Part-merge order needs fixing without
   losing content.
-- [ ] **Measurement data tables** — loop rate is in README; ToF noise/accuracy, IMU stationary
-  drift, rail voltage under load, wheels-up interference from brief §4.2 are **not** yet shown as
-  data tables.
+- [ ] **Raw measurement files** — summary tables for ToF, IMU drift, rail voltage and wheels-up
+  interference are now in README; original CSV/text logs still need adding under `docs/data/`.
+- [ ] **ToF distance-mode implementation** — README now distinguishes the intended SHORT mode from
+  the imported PiicoDev driver's actual default configuration. Extend/verify the driver before
+  claiming SHORT mode is active.
 - [ ] Pi 5 / Pico setup checklists partially `DONE`, deployment scripts still `PENDING`.
 
 ### 7.3 To do — blocking / high priority
@@ -349,8 +359,8 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [ ] Confirm second-chassis redundancy claim before publishing
 - [x] Document `FORWARD = -1` and `MIN_DUTY = 15%` from the later measured scripts
 - [ ] Document heading clockwise-positive and `SENSOR_OFFSET_MM = -10` in production code
-- [ ] Add engineering findings from brief §4.4 (IMU init order, quiet-bus calibration, heading wrap,
-  fail-safe reads) once verified by the team
+- [x] Add verified engineering findings: IMU init order, quiet-bus calibration, heading wrap and
+  fail-safe reads
 
 ### 7.5 Blocked / waiting on the team
 

@@ -618,6 +618,47 @@ more to us than peak power.
 | Target cruise speed, 600 mm corridor | `[PENDING]` | `PENDING` |
 | Target speed, parking manoeuvre | `[PENDING]` | `PENDING` |
 
+### First floor runs and stopping-distance test `DONE`
+
+The first untethered floor run used the GP15 active-low start button and a hard maximum runtime.
+The vehicle drove successfully at 40% duty. This moved the project from component bring-up to an
+integrated vehicle that could start from one button press and move under its own power.
+
+The first wall-stop experiment also showed why a threshold cannot equal the desired final gap.
+There is delay before the control loop sees the threshold, followed by motor spin-down and vehicle
+coast. With the target 3.06 m from the start and a 600 mm trigger, three 40%-duty runs produced:
+
+| Run | Final wall gap | Distance travelled after trigger | Note |
+| --- | ---: | ---: | --- |
+| 1 | 190 mm | 410 mm | Straight approach |
+| 2 | 190 mm | 410 mm | Repeat of run 1 |
+| 3 | 220 mm | 380 mm | Vehicle deviated from a straight path |
+
+**Worst measured coast distance: 410 mm at 40% duty.** A previous short-run measurement of
+approximately 370 mm was retired because the vehicle had not yet reached full speed. For a desired
+100 mm gap, including the 10 mm sensor overhang, the provisional trigger calculation was
+`410 + 100 + 10 = 520 mm`.
+
+That much warning is not reliably available at every WRO corner. The result therefore changed the
+speed strategy: 40% is likely too fast for close obstacle approaches, and stopping distance must
+be remeasured at the eventual 20–25% cruise range.
+
+At 20% duty the motor could sustain motion after a manual push but could not reliably break static
+friction from rest. The 15% wheels-up duty floor is therefore not a floor-driving start value.
+Production control needs a short, measured kickstart followed by the lower cruise command.
+
+### Failed wall-stop and fail-safe rule
+
+During the first 20% wall-stop attempt, the vehicle continued into the wall and remained stalled
+until the maximum-runtime timeout. Existing power measurements contradicted the first brownout
+hypothesis: Pico VSYS remained at least 4.87 V during three stall trials.
+
+The control-loop defect was a bare `tof.read()`. An exception, zero or implausibly large reading
+could prevent the stop condition from becoming true. The rule established from this failure is:
+**sensor failure is a reason to stop, not a reason to keep driving.** Production loops must catch
+read exceptions, reject invalid status values and stop after a bounded number of consecutive bad
+reads.
+
 ### Turning radius measurement procedure `PENDING`
 
 The Brain layer's path planner needs the minimum turning radius **measured at the rear axle
@@ -1044,13 +1085,16 @@ faster than guessing, every time.
 | 9 | Star ground topology | Prevents motor return current from shifting the sensor ground reference | More wiring discipline |
 | 10 | Reject USB power bank and 4S LiPo | Power bank gives a "soft" 5 V under spiky Pi load; 4S adds voltage the driver does not want and weight we do not need | BTS7960 kept in reserve if 4S ever becomes necessary |
 | 11 | Reject RPLidar A1 | Scan plane sits above the 100 mm wall height (Rules 13.3, 13.5) — it would see nothing | Lost a 360° map; discrete sensors must be placed deliberately |
-| 12 | VL53L1X in SHORT distance mode | 1.3 m covers both the 1000 mm and 600 mm corridors; short mode barely degrades under bright light, long mode degrades badly | None — we gave up range we never needed |
+| 12 | Target VL53L1X SHORT mode for production | 1.3 m covers both corridor widths and should improve ambient-light robustness | Current PiicoDev driver does not expose the setting; implementation and validation remain pending |
 | 13 | Paired dual-ToF baseline instead of a multizone sensor | Two points fully determine wall angle; simpler firmware and better per-reading SNR | Two mounts and two addresses per side |
 | 14 | Reflective optical encoder rather than timed open-loop or IMU integration | Timed control drifts with battery state; double-integrated acceleration drifts quadratically | Mechanical work: disc fabrication and mounting |
 | 15 | Split compute: Pi 5 for perception, Pico for control | OS scheduling jitter is unacceptable in a control loop; the Pico cannot run a camera | A serial link that can fail; two codebases |
 | 16 | Geometry-primary pillar detection, colour secondary | A colour misread degrades to "side unknown" rather than "no obstacle" — and Rule 13.18 warns venue colours will differ | More ToF processing work |
 | 17 | ASCII serial protocol rather than binary | Human-readable during bring-up | Larger and slower — a deliberate prototype shortcut |
 | 18 | Verify sensor part number by model ID register | L0X and L1X boards are visually identical and often mislabelled | One line of code; no downside |
+| 19 | Construct the BNO055 last and restore saved offsets | PiicoDev ToF constructors reinitialise I²C and silently kill an earlier IMU object; streaming ToFs also prevent reliable live calibration | Initialisation order is load-bearing until all drivers share one bus object |
+| 20 | Fail safe on repeated invalid sensor reads | The first wall-stop continued into the wall when an unguarded ToF read failed to satisfy the stop condition | A false stop may end a run early, but continuing blind is worse |
+| 21 | Use Welford's method for streaming variance | The naive formula collapsed real ~1 mm ToF variation to `0.00` in MicroPython single precision | Slightly more state per metric |
 
 ## Decisions reversed after measurement
 
@@ -1068,6 +1112,9 @@ Recorded separately, because these are the entries that show the process working
 | Put the steering servo on the compute rail | Reviewing our own transient-isolation argument — the servo is a transient source | Servo moved to its own buck on the actuator pack |
 | Run the 5 V motor from a raw 11.1 V pack, capped at ~45 % duty | A duty cap sets average voltage, not peak. The motor would still see full 11.1 V during every ON pulse, and heating follows RMS current — worst at stall, where back-EMF is zero | Motor moved to its own regulated 5 V buck. Duty cycle now controls speed only, and our existing 5 V bench measurements became valid operating figures |
 | Fit ultrasonic sensors alongside the ToF array "for safety" | We had not yet measured whether the ToF actually struggles against black wall material. Adding hardware against an unmeasured worry is our named failure mode | Deferred pending the black-wall reflectivity test. If ToF reads reliably, no ultrasonic is fitted |
+| Construct the IMU before waking the ToFs | Heading worked before ToF construction, then froze at `0.0` with no exception | ToFs are addressed first; the IMU is constructed last and saved offsets are restored |
+| Accept a printed ToF σ of `0.00` | Visible readings varied, proving the statistic was impossible; single-precision cancellation was the cause | Replaced the formula with Welford's streaming variance |
+| Explain the failed wall-stop as a brownout | Three stall trials held Pico VSYS at 4.87–4.89 V | Brownout rejected; the unguarded sensor read and fail-forward logic were identified |
 
 The last three rows are corrections to our own earlier documentation. We record them rather than
 quietly editing them out, because a design history that contains no reversals is not a history of
@@ -1097,9 +1144,10 @@ engineering.
 | Colour thresholds fail at venue lighting (Rule 13.18) | High | Pillar passed on wrong side | Geometry-primary detection; on-site recalibration during testing rounds | `PENDING` |
 | Touching a parking limitation (Rule 9.24.7) | Medium | Round stopped | Rear ToF; clearance-tuned manoeuvre | `PENDING` |
 | Outer wall contact in Open Challenge (Rule 9.18) | Medium | Round zero | Bias lane setpoint toward the inner wall | `PENDING` |
-| IMU heading drift over 3 laps | Medium | Turn accuracy degrades | Correct against wall references | `PENDING` |
+| IMU heading drift over 3 laps | Medium | Turn accuracy degrades | Stationary calibration passed; measure moving drift and correct against wall references | `IN PROGRESS` |
 | Motor stall current exceeds the buck's limit | Unknown | Motor rail collapses at breakaway | Measure stall current at 5 V; bulk capacitance at the driver; soft-start ramp | `PENDING` |
 | Black walls absorb IR, degrading ToF returns | Unknown | Wall following unreliable — affects every round | Measure against real wall material at 300/600/1000 mm before deciding on ultrasonic redundancy | `PENDING` |
+| Invalid ToF read allows fail-forward motion | High | Vehicle continues toward a wall without a trusted distance | Catch exceptions, check status and stop after bounded consecutive failures | Fix `PENDING` |
 | Surprise rule announced (Rule §6) | Expected in 2026 | New behaviour required late | Modular state machine — a new behaviour is a new state | Design mitigates |
 | Time: integration starts too late | **High** | Untested system at competition | Serial link is the next milestone, ahead of new features | Active |
 
@@ -1118,7 +1166,14 @@ finishing subsystems that never get integrated in time to be tuned together.
 - Steering conversion built and functional (servo in the old motor pocket, slotted horn, spoke to
   the original yoke on its original pivot post)
 - Five VL53L1X sensors on one I²C bus, XSHUT-sequenced, readdressed `0x30`–`0x34`
+- BNO055 cold-boot verified at `0x28`; final six-device scan verified on one bus
+- IMU-last bring-up with saved calibration offsets; stationary calibrated drift `0.00°/min`
+- Wheels-up motor-interference ladder passed through 70% duty and 1 Hz reversal: 100% valid
+  reference-ToF reads, zero I²C errors and no measured heading drift
+- First untethered floor runs completed; worst measured 40%-duty coast distance 410 mm
+- Compute rail measured at 4.87–4.89 V during three motor stall trials
 - Sensor part verified as VL53L1X by model ID register (`0x010F` = `0xEACC`)
+- ToF static characterization completed at 500/1000/1200 mm: σ 1.5/2.4/3.2 mm with 100% valid reads
 - Loop rate measured at ~555 loops/sec — retired three planned architectural workarounds
 - LiPo packs verified; charge and storage protocol established
 - Power architecture finalised: two packs, three bucks, star ground, servo on the actuator pack
@@ -1128,17 +1183,22 @@ finishing subsystems that never get integrated in time to be tuned together.
 
 ## Immediate next steps, in priority order
 
-1. **BNO055 IMU bring-up** — verify at `0x28`, confirm no bus conflict, read fused heading
-2. **Encoder hardware** — fabricate disc, verify contrast, relocate TCRT5000, calibrate mm/count
-3. **Turning radius measurement** — needs both of the above; **blocks the parking manoeuvre and
+1. **Fail-safe wall-stop** — catch ToF exceptions, reject invalid status values and stop after a
+   bounded number of consecutive bad reads
+2. **Low-speed start and stop** — add a measured kickstart, then remeasure coast distance at
+   20–25% duty
+3. **On-car IMU drift and straight-line hold** — the stationary test is complete; motion is the
+   condition that matters
+4. **Encoder hardware** — fabricate disc, verify contrast, relocate TCRT5000, calibrate mm/count
+5. **Turning radius measurement** — needs both IMU and encoder; **blocks the parking manoeuvre and
    answers whether the car fits a 600 mm corridor**
-4. **Black-wall reflectivity test** — VL53L1X against real wall material at 300/600/1000 mm.
+6. **Black-wall reflectivity test** — VL53L1X against real wall material at 300/600/1000 mm.
    **Gates the ultrasonic redundancy decision; do not buy or fit anything before this runs**
-5. **Motor stall current at 5 V vs the buck's current limit** — completes the power budget and
+7. **Motor stall current at 5 V vs the buck's current limit** — completes the power budget and
    tells us whether the motor rail can survive breakaway
-6. **Servo `LEFT_MAX` / `RIGHT_MAX`** — via the interactive calibration tool
-7. **Pi ↔ Pico serial link** — the first true integration milestone
-8. **Wall-following control loop** — the first behaviour that looks like a self-driving car
+8. **Servo `LEFT_MAX` / `RIGHT_MAX`** — via the interactive calibration tool
+9. **Pi ↔ Pico serial link** — the first cross-controller integration milestone
+10. **Wall-following control loop** — the first full navigation behaviour
 
 ## Commit schedule
 
@@ -1336,12 +1396,42 @@ current most.
 
 | Mitigation | Status |
 | --- | --- |
-| Measure stall current at 5 V and compare to the converter's rated limit | `PENDING` |
+| Verify compute-rail voltage during startup and three stall trials | `DONE` |
+| Measure stall current in amperes and compare to the converter's rated limit | `PENDING` |
 | Bulk capacitance at the TB6612FNG input so the converter sees an averaged load | `PENDING` |
 | Firmware soft-start — ramp duty from the floor rather than stepping | `PENDING` |
 
 This is a trade we made knowingly: we exchanged a motor over-voltage risk (certain, cumulative,
 destroys the motor) for a rail-collapse risk (uncertain, recoverable, and testable in an afternoon).
+
+### Conservative shared-pack load test
+
+Before the final dual-pack layout was treated as complete, we deliberately tested a harsher
+single-pack arrangement: one 3S pack split at its terminals into separate compute and motor bucks.
+This preserves regulator isolation but allows motor current to pull on the same battery feeding
+the Pico. A pass in this setup is useful evidence; it does not change the documented final
+two-pack, three-buck architecture.
+
+Voltage was measured with a multimeter at Pico VSYS, including harness loss:
+
+| Condition | Pack voltage | Pico VSYS |
+| --- | ---: | ---: |
+| Rest | 12.17 V | 5.00 V |
+| Free-run startup inrush | 12.17 V | 4.88–4.90 V |
+| Free-run steady | 12.17 V | 4.93–4.95 V |
+| Stall, three trials | 12.12 V | 4.87–4.89 V |
+
+The compute rail stayed above the predeclared 4.7 V decision threshold with at least 170 mV
+margin, and the TB6612FNG was not warm to the touch after the three stall trials. This rules out
+compute-rail brownout as the cause of the failed wall-stop run.
+
+The Pico ADC3 VSYS channel in the test script was rejected as invalid because it reported about
+1.34 V instead of the known 5 V rail. Those script values were not used; only the multimeter
+measurements above are accepted.
+
+Two limitations remain. Stall current itself was not measured in amperes, and the pack was near
+full at 12.12–12.17 V. The conservative shared-pack test should be repeated around 10.8 V
+(3.6 V/cell) if that configuration is used again.
 
 ### Rejected power alternatives
 
@@ -1420,7 +1510,7 @@ feeding data to the compute layer.
 | Sensor | Qty | Purpose | Status |
 | --- | --- | --- | --- |
 | **VL53L1X** time-of-flight | 6 | Wall distance and wall angle | 5 brought up `DONE`, 6th `PENDING` |
-| BNO055 IMU | 1 | Absolute heading | `IN PROGRESS` |
+| BNO055 IMU | 1 | Relative fused heading | Bench `DONE`; moving-car drift `PENDING` |
 | Reflective optical wheel encoder | 1 | Distance travelled | `PENDING` |
 | Raspberry Pi Camera Module 3 Wide | 1 | Pillar colour, line detection | `IN PROGRESS` |
 
@@ -1433,7 +1523,7 @@ sellers. We verified ours by reading the **model ID register `0x010F`**, which r
 This check takes one line of code and prevented us from working against the wrong datasheet. It
 also corrected our own early documentation, which described the parts as L0X.
 
-### Distance mode: SHORT — a configuration decision that matters
+### Distance mode: SHORT — production target, not yet implemented
 
 | Mode | Nominal range | Behaviour under bright ambient light |
 | --- | --- | --- |
@@ -1444,15 +1534,48 @@ The competition corridor is 1000 mm wide, and narrows to 600 mm in some Open Cha
 Both fit **entirely inside short mode's range**, so we get ambient-light robustness for free with
 no loss of usable range.
 
-This reframes a common complaint: "ToF sensors are unreliable under bright light" is usually a
-*configuration* problem, not a hardware limitation. Teams run long mode because it is the default,
-then blame the sensor. Given Rule 13.18 warns that venue conditions will differ from our workshop,
-this margin is worth having.
+This is the intended production configuration. However, the imported PiicoDev driver currently
+does not expose a distance-mode setter, so the recorded characterization runs used its default
+configuration and produced readings out to approximately 2 m. We therefore cannot yet claim that
+SHORT mode is active in firmware. Production code must either extend the driver or verify the
+sensor registers directly. Given Rule 13.18 warns that venue conditions will differ from our
+workshop, this configuration must be tested rather than assumed.
 
 **Driver: PiicoDev VL53L1X**, chosen for two specific features:
 - **Per-reading status flags** — we can distinguish a valid reading from a failed one instead of
   treating a garbage value as a real distance.
 - **A working `change_addr()` method** — required for the multi-sensor scheme below.
+
+### Measured ToF accuracy, noise and field of view
+
+After clearing nearby objects from the beam, three static runs produced:
+
+| Reference distance | Samples | Mean reading | σ | Spread | Error |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 mm | 122 | 512.7 mm | 1.5 mm | 7 mm | +13 mm |
+| 1000 mm | 140 | 1000.9 mm | 2.4 mm | 13 mm | +1 mm |
+| 1200 mm | 176 | 1188.4 mm | 3.2 mm | 12 mm | −12 mm |
+
+All three static runs reported 100% `OK` status, with zero dropouts and no statistical outliers.
+Noise increased monotonically with range, as expected from a weaker optical return, but remained
+small relative to the WRO corridor dimensions.
+
+The accuracy error changes sign: +13, +1, then −12 mm. This is not a fixed offset that can simply
+be subtracted. It suggests a mild scale/linearity effect, although hand placement and measuring
+from the PCB rather than the optical window can account for much of a ±13 mm difference. Future
+reference distances must be measured from the optical window.
+
+The VL53L1X observes an approximately 27° cone and reports the strongest or nearest useful return
+inside it, not necessarily the surface directly in front of the centreline. At 2.03 m that cone is
+almost 1 m wide. Early apparent under-reading was traced to furniture and table clutter entering
+the cone; flipping the board to clear the scene restored stable readings near the intended wall.
+This corrected two earlier hypotheses—400 kHz bus trouble and optical-window film—that the test
+did not support.
+
+The status flag is valuable but not perfect. During moving-hand tests, transitions produced
+`WrapTargetFail` and `SignalFail`, but some geometrically wrong returns still reported `OK`.
+Production sensing therefore needs two layers: accept only valid status values, then pass them
+through a rolling median with a timeout on the last good reading.
 
 ### Why ToF and not ultrasonic rangefinders
 
@@ -1586,19 +1709,63 @@ solution uses the `XSHUT` (shutdown) pin:
 | Item | Assignment |
 | --- | --- |
 | I²C bus | I²C0, SDA = GP8, SCL = GP9 |
-| Bus speed | 400 kHz |
+| Bus speed | 100 kHz for five-device bring-up; 400 kHz for the two-sensor performance test |
 | XSHUT control pins | GP10 – GP14 |
 | Assigned ToF addresses | `0x30`, `0x31`, `0x32`, `0x33`, `0x34` |
-| IMU on the same bus | expected at `0x28` — verification `PENDING` |
+| IMU on the same bus | BNO055 at `0x28` — verified |
 
 > **Note we keep repeating to ourselves:** GPIO number is not physical pin number. `GP8` is not
 > pin 8. Read the pinout diagram every time.
+
+#### Addressing faults found during bring-up
+
+The first one-ToF diagnostic returned `0x29` with XSHUT both low and high. That result was
+ambiguous because `0x29` could be the VL53L1X factory address or the BNO055's unmodified address.
+Testing one variable at a time exposed two independent wiring faults:
+
+1. The ToF XSHUT wire was not connected, so pulling GP10 low did not silence it.
+2. The BNO055 ground had mistakenly been connected to a GPIO rather than a ground pin.
+
+After both corrections, the diagnostic became:
+
+```text
+XSHUT low : 0x28
+XSHUT high: 0x28, 0x29
+```
+
+This pair of scans proved both that the IMU was alive at `0x28` and that XSHUT genuinely controlled
+the ToF sensor. The GPIO that had been used as a false ground was tested afterwards and was not
+damaged.
+
+#### Five-sensor proof
+
+The final 100 kHz bring-up scan was:
+
+```text
+0x28, 0x30, 0x31, 0x32, 0x33, 0x34
+```
+
+All five ToF sensors then returned distances in the same loop with zero I²C errors. Covering each
+sensor separately changed only that sensor's value while the others held their distant target,
+proving independent addressing rather than five objects responding as one.
+
+With all five sensors packed side by side and aimed in nearly the same direction, a flat hand at
+about 110 mm produced an approximately 20 mm edge-to-edge disagreement. Hand angle explains part
+of it, but neighbouring infrared emissions may also contribute. This is a deliberately harsh
+geometry; the final splayed mounting should reduce, but cannot be assumed to eliminate, crosstalk.
+It reinforces the need for per-reading validity checks and filtering.
 
 ### Loop rate measurement — and the three complications it retired `DONE`
 
 Before designing around a timing assumption, we measured the actual read rate.
 
 **Result: approximately 555 loop iterations per second with two sensors on a 400 kHz bus.**
+
+Scaling by the measured register-read time predicts approximately 185 loop iterations per second
+for six ToF sensors. That is a prediction, not a six-sensor measurement. It is also the polling
+rate, not the fresh-data rate: reading faster than the sensor updates returns repeated values.
+The intended control loop is therefore around 50 Hz, leaving processor time for the IMU, encoder
+and actuators.
 
 We had expected far worse and had already sketched three architectural workarounds for the
 bottleneck we assumed existed:
@@ -1617,6 +1784,10 @@ sensor means waiting for a measurement", was simply wrong for this part.
 **The lesson, recorded because it generalises:** we nearly added a second microcontroller, a second
 bus and an accuracy compromise to solve a bottleneck that did not exist. *Measure the thing before
 you architect around it.*
+
+The 400 kHz result used two sensors and short wiring. Five-sensor bring-up deliberately used
+100 kHz to separate addressing reliability from bus-speed tuning. The production bus speed remains
+to be selected and validated on the final harness.
 
 ### Sensor placement and the paired-baseline technique `PENDING`
 
@@ -1670,12 +1841,12 @@ directly on it.
 > **Sensor placement diagram to be added:** `schemes/sensor_placement.png`
 > Top view with field-of-view cones and the baseline separation dimensioned.
 
-### BNO055 Inertial Measurement Unit `IN PROGRESS`
+### BNO055 Inertial Measurement Unit `DONE — BENCH; MOTION TEST PENDING`
 
-The BNO055 performs sensor fusion **on-chip**, outputting absolute orientation rather than raw gyro
-and accelerometer data. That matters for a student team: implementing a stable complementary or
-Kalman filter from raw IMU data is a serious project in itself. Buying the fusion in silicon buys
-us weeks of schedule.
+The BNO055 performs gyro and accelerometer fusion on-chip. We selected `IMUPLUS_MODE`, deliberately
+disabling the magnetometer because the motor, wiring and LiPo packs produce local magnetic fields
+that can overwhelm Earth's field. The accepted trade-off is relative heading rather than compass
+north, which suits a track defined from the vehicle's start orientation.
 
 **What we use it for:**
 - Heading during turns — the primary reference for "have I turned 90°?"
@@ -1686,16 +1857,122 @@ us weeks of schedule.
 noisy acceleration twice produces error that grows quadratically with time. This is a known dead
 end, not a tuning problem — which is why the encoder exists.
 
+#### Address configuration and the cold-boot trap
+
+The BNO055 originally appeared at `0x29`, colliding with the temporary address every ToF sensor
+uses during startup. Address-selection experiments initially contradicted each other because the
+board latches its configuration when power is applied. Changes made after boot appeared to persist
+until power was removed.
+
+Cold-boot tests established:
+
+| ADR state before power-on | Board pads before power-on | Address |
+| --- | --- | --- |
+| Ground | Bridged | `0x28` |
+| Ground | Open | `0x29` |
+| Floating | Bridged | `0x29` |
+
+Both conditions are therefore required. ADR is permanently soldered to ground and the pads are
+bridged. A GPIO is not used for ADR because its state is not guaranteed while the Pico itself
+starts.
+
+#### Calibration and saved offsets
+
+`cal_status()` reports `[system, gyro, accelerometer, magnetometer]` confidence from 0–3. In
+IMUPLUS mode we require gyro and accelerometer level 3; magnetometer and full-system status are not
+used.
+
+The two required actions are opposite:
+
+1. Move and hold the IMU through several orientations so the accelerometer can observe gravity on
+   each axis.
+2. Set it down and keep it still so the gyro can estimate zero-rate bias.
+
+An early loop waited for both values while repeatedly moving the board; gyro confidence rose while
+still and fell during accelerometer movement. The corrected order is accelerometer movement first,
+then gyro stillness.
+
+The accelerometer also failed to reach level 3 while five ToF sensors continuously streamed. The
+same calibration completed with the ToFs held in reset. We therefore calibrate before waking the
+ToFs or load a previously captured 22-byte offset profile. Saved offsets remove the impractical
+competition-day tumbling ritual, but they are specific to the sensor and mounting. They must be
+recaptured after final mounting and verified rather than trusted blindly.
+
+#### Initialisation-order failure and final sequence
+
+The first combined script constructed the IMU before the ToF objects. Each
+`PiicoDev_VL53L1X(...)` constructor created another `machine.I2C` object and reinitialised the
+physical peripheral. The ToFs worked, but the earlier IMU object returned a frozen `0.0°` heading
+and zero calibration status without an exception.
+
+The adopted sequence is:
+
+1. Hold all ToFs in reset and confirm the IMU alone at `0x28`.
+2. Wake and readdress each ToF to `0x30`–`0x34`.
+3. Confirm all six addresses.
+4. Rebuild the shared I²C object and construct the BNO055 **last**.
+5. Select `IMUPLUS_MODE`, restore offsets and reassert the mode.
+6. Read heading, calibration status and all five distances together.
+
+This is a prototype constraint, not the ideal final design. Production firmware should create one
+shared I²C object and pass it to every driver so no constructor can silently reset the bus.
+
+#### Stationary drift and heading convention
+
+The first apparently perfect drift attempt was invalid: heading stayed exactly `0.00°` while the
+accelerometer remained uncalibrated, indicating that useful fusion output was not being produced.
+After requiring both gyro and accelerometer level 3 and verifying that rotation changed heading,
+the 60-second stationary test produced:
+
+| Condition | Result |
+| --- | ---: |
+| Accelerometer uncalibrated | approximately 40°/min drift |
+| Gyro 3 and accelerometer 3, stationary | `357.88°` start, `357.88°` end: `+0.00°/min` |
+
+This is a stationary result only. Acceleration, cornering and vibration contaminate the gravity
+reference, so on-car drift over a known path remains `TODO: measure`.
+
+Manual rotation established a clockwise-positive convention: a right rotation produced `+8.75°`
+and a left rotation `−7.75°`. Captured readings also crossed `359.94° → 0.00°`, demonstrating why
+raw subtraction is unsafe. Every heading difference must be folded into ±180°.
+
+#### Wheels-up motor-interference test
+
+We tested the integrated motor, IMU and one reference ToF through a seven-phase ladder. Pass
+criteria were declared before the run. The first run was discarded because the vehicle began
+walking on its block and was steadied by hand, contaminating the heading measurement. The valid
+second run was clamped and untouched:
+
+| Phase | IMU drift/min | ToF mean | ToF σ | Valid reads | Accel cal | I²C errors |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Motor off | 0.00° | 422.1 mm | 0.98 mm | 100% | 3 | 0 |
+| Driver awake, 0% | 0.00° | 422.0 mm | 1.00 mm | 100% | 3 | 0 |
+| 20% duty | 0.00° | 421.7 mm | 1.03 mm | 100% | 3 | 0 |
+| 40% duty | 0.00° | 422.0 mm | 1.00 mm | 100% | 3 | 0 |
+| 70% duty | 0.00° | 422.0 mm | 1.09 mm | 100% | 3 | 0 |
+| 60%, direction reversed every second | 0.00° | 422.0 mm | 0.94 mm | 100% | 3 | 0 |
+| Motor off, recovery | 0.00° | 422.2 mm | 1.13 mm | 100% | 3 | 0 |
+
+**Verdict: pass for wheels-up vibration and switching interference.** The ToF mean varied by only
+0.5 mm across the ladder, all reads were valid, and there were no I²C exceptions. This does not
+clear full-load driving: the free-spinning motor drew roughly 140 mA, and only one reference ToF
+was sampled. A five-ToF test under on-floor load remains pending.
+
+The first statistics implementation had reported `σ = 0.00` despite visibly changing distances.
+MicroPython's single-precision floats lost the small variance while subtracting two large,
+near-equal values. Replacing it with Welford's streaming algorithm produced the credible
+approximately 1 mm results above.
+
 | Task | Status |
 | --- | --- |
-| Verify presence at `0x28` on the shared bus | `PENDING` |
-| Confirm no conflict with ToF addresses `0x30`–`0x34` | `PENDING` |
-| Read fused heading at loop rate | `PENDING` |
-| Characterise drift over a 3-lap-duration run | `PENDING` |
-| Document the calibration ritual for competition day | `PENDING` |
-
-The drift characterisation matters because the state machine must not assume the IMU stays correct
-for a whole round. Wall references correct it.
+| BNO055 fixed and cold-boot verified at `0x28` | `DONE` |
+| Shared bus with five ToFs at `0x30`–`0x34` | `DONE` |
+| Saved offsets loaded after IMU-last construction | `DONE` |
+| Stationary calibrated drift test | `DONE` |
+| Wheels-up interference test with one reference ToF | `DONE` |
+| Recapture offsets in final mounting position | `PENDING` |
+| On-car drift under motion | `PENDING` |
+| Five-ToF interference test under floor load | `PENDING` |
 
 ### Optical wheel encoder `PENDING`
 
@@ -1796,7 +2073,7 @@ any number in this document can be traced back to the test that produced it.
 | ToF offset and crosstalk | Known-distance reference target | `PENDING` |
 | Baseline separation `L` | Physical measurement after mounting | `PENDING` |
 | Encoder mm per count | Roll a measured distance, count pulses | `PENDING` |
-| IMU calibration state | BNO055 built-in routine | `PENDING` |
+| IMU calibration state | Accel movement, then gyro stillness; saved offsets restored at startup | Bench `DONE`; final mounting `PENDING` |
 | Camera colour thresholds | Sample pillars under varied lighting | `PENDING` |
 
 ### Failure modes at the sensor and power layer
@@ -1805,12 +2082,12 @@ any number in this document can be traced back to the test that produced it.
 | --- | --- | --- | --- |
 | Motor transient browns out the Pi | Round lost | Two packs, separate bucks, star ground | `DONE` |
 | Servo transient reaches compute rail | Round lost | Servo on its own buck off the actuator pack | `DONE` |
-| ToF returns invalid reading | Controller acts on garbage distance | Check PiicoDev status flag; hold last good value | `PENDING` |
-| Bright venue light degrades ToF | Range collapses | Short distance mode | `DONE` (config) |
+| ToF returns invalid reading | Controller acts on garbage distance or continues toward a wall | Check status, median-filter valid reads and stop after bounded consecutive failures | Fix `PENDING` |
+| Bright venue light degrades ToF | Range collapses | Implement and validate short distance mode | `PENDING` |
 | Black wall absorbs IR, weakening ToF return | Wall distance unreliable | Measure against real wall material; ultrasonic redundancy only if measurement justifies it | `PENDING` |
 | Motor stall current exceeds buck limit | Motor rail collapses at breakaway | Measure stall current; bulk capacitance; soft-start ramp | `PENDING` |
 | I²C bus lockup | All sensors lost at once | Timeout detection, bus reset, re-run XSHUT init | `PENDING` |
-| IMU heading drift over 3 laps | Turns become inaccurate | Correct against wall references | `PENDING` |
+| IMU heading drift over 3 laps | Turns become inaccurate | Stationary test passed; measure moving drift and correct against wall references | `IN PROGRESS` |
 | Colour thresholds fail at venue (Rule 13.18) | Wrong pillar side chosen | Geometry-primary detection; on-site recalibration | `PENDING` |
 | Encoder disc contrast insufficient | No distance feedback | Verify contrast before final mounting | `PENDING` |
 | Pack flat mid-round | Round lost | Voltage monitoring and a pre-round checklist | `PENDING` |
