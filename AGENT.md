@@ -282,8 +282,9 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Rule 11.3 / differential-drive** correctly stated (4WD not prohibited).
 - [x] **WRO template folders** present: `src/`, `schemes/`, `models/`, `t-photos/`, `v-photos/`,
   `video/`, plus `docs/` placeholders.
-- [x] **Team photo** referenced in README via GitHub user-attachments URLs (not yet files in
-  `t-photos/`).
+- [x] **Team photos added 2026-08-13** — group photo and labelled portraits for Abiha Zainab,
+  Tawassal Zahra and Nukhba Tanveer stored locally in `t-photos/`, indexed in its README and
+  embedded in the main README.
 - [x] Multiple git commits exist on `main` (mostly README / skeleton).
 - [x] **Steering build-process photos added 2026-08-13** — ten resized/source-compliant images in
   `v-photos/`, indexed in `v-photos/README.md`, with selected chronological evidence embedded in
@@ -309,7 +310,6 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
   - [ ] Check against the first-commit deadline: **≥1/5 of final code, ≥2 months before competition**
 - [ ] **Finished-vehicle photos** — front, rear, left, right, top and bottom → `v-photos/`.
   Build-process photos now exist, but they do not satisfy the six-view Rule 7 requirement.
-- [ ] **Team photo files** → `t-photos/` (currently only external image URLs in README)
 - [ ] **Videos** — one per challenge, ≥30 s autonomous driving, YouTube links → `video/video.md`
   (placeholder only)
 - [ ] Create `other/` (datasheets, `calibration_log.md`, `test_log.md` are referenced but folder
@@ -353,8 +353,6 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [ ] Should Power/Sensors (§4e/4f) be moved up under Section 4 now, or wait for Nukhba to own the edit?
 - [ ] Prefer renaming `docs/engineering-journal` → `docs/journal` and adding `docs/data/`, or keep
   current names and update the brief?
-- [ ] Team photo: keep GitHub attachment URLs, or commit resized files into `t-photos/` (Rule 7
-  prefers repo contents)?
 - [ ] This session focus for Tawassal (Body): pin map + mobility PENDING fields, or README
   restructure first?
 

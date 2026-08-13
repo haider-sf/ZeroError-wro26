@@ -96,6 +96,23 @@ Two constraints from this table shaped our design more than any other:
 
 # SECTION 3 — The Team
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="t-photos/abiha-zainab.png" width="200" alt="Abiha Zainab"><br>
+      <strong>Abiha Zainab</strong><br>Brain — Software
+    </td>
+    <td align="center">
+      <img src="t-photos/tawassal-zahra.png" width="200" alt="Tawassal Zahra"><br>
+      <strong>Tawassal Zahra</strong><br>Body — Hardware
+    </td>
+    <td align="center">
+      <img src="t-photos/nukhba-tanveer.png" width="200" alt="Nukhba Tanveer"><br>
+      <strong>Nukhba Tanveer</strong><br>Senses — Sensors, Power and Documentation
+    </td>
+  </tr>
+</table>
+
 **Student Biographies**
 
 - **Abiha Zainab — Brain layer (Software)**
@@ -1107,11 +1124,9 @@ electronics deck, encoder disc).
 
 ## Our team members
 
-<br>
-<img width="250" alt="Team Zero Error" src="https://github.com/user-attachments/assets/c9df0817-d718-4fe2-9a3a-0ed28814bbd9" />
-<br>
-<br>
-<img width="250" alt="Team Zero Error" src="https://github.com/user-attachments/assets/1adec247-04cc-4810-a3d7-a5084946ddcb" />
+<img width="500" alt="Team Zero Error: Tawassal Zahra, Nukhba Tanveer and Abiha Zainab" src="t-photos/team-zero-error.png">
+
+*Team Zero Error: Tawassal Zahra (Body), Nukhba Tanveer (Senses) and Abiha Zainab (Brain).*
 
 **`v-photos/`** — The six mandatory technical photographs showing the vehicle from every required
 angle, plus the steering iteration photographs referenced in Section 4c.
