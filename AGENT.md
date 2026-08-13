@@ -297,14 +297,20 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Steering build-process photos added 2026-08-13** — ten resized/source-compliant images in
   `v-photos/`, indexed in `v-photos/README.md`, with selected chronological evidence embedded in
   README Sections 4a and 4c. These do not count as the six mandatory final-vehicle views.
+- [x] **Pico engineering code imported 2026-08-13** — 29 MicroPython files organised under
+  `src/pico/lib`, `tools`, `tests` and `experiments`; actual deployment instructions, hardware
+  mapping and known historical hazards documented in `src/pico/README.md`.
+- [x] **Motor duty discrepancy resolved from source evidence 2026-08-13** — later measured scripts
+  and the project brief agree on `FORWARD = -1` and a reliable in-chassis `MIN_DUTY = 15%` at
+  5 V / 1 kHz. Main README updated from the earlier ~13% value.
+- [x] **Pico pin assignment table updated 2026-08-13** — imported tests confirm GP0 servo,
+  GP2–GP5 motor, GP8/GP9 I2C, GP10–GP14 XSHUT and GP15 run button; GP16 encoder remains planned.
 
 ### 7.2 In progress
 
 - [ ] **README Section 4 structure** — `## e) Power` and `## f) Sensors` currently sit *after*
   Section 12 (end of file), not under Section 4 with a–d. Part-merge order needs fixing without
   losing content.
-- [ ] **Pin assignment table (§4g)** — servo/motor pins still marked `PENDING` in README while
-  this brief lists confirmed GP0 / GP2–GP5. Needs team confirmation before editing.
 - [ ] **Measurement data tables** — loop rate is in README; ToF noise/accuracy, IMU stationary
   drift, rail voltage under load, wheels-up interference from brief §4.2 are **not** yet shown as
   data tables.
@@ -312,9 +318,10 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 
 ### 7.3 To do — blocking / high priority
 
-- [ ] **Upload code to `src/`**
-  - [ ] Pico MicroPython: `main.py`, sensor bring-up, drivers — **dirs empty** (placeholder README only)
-  - [ ] Pi 5: vision pipeline — **empty**
+- [ ] **Complete production code in `src/`**
+  - [x] Pico MicroPython drivers, calibration tools and engineering tests — 29 files uploaded
+  - [ ] Pico production `main.py`, encoder, serial watchdog and unified fast loop
+  - [ ] Pi 5 vision / strategy pipeline — **empty**
   - [ ] Check against the first-commit deadline: **≥1/5 of final code, ≥2 months before competition**
 - [ ] **Finished-vehicle photos** — front, rear, left, right, top and bottom → `v-photos/`.
   Build-process photos now exist, but they do not satisfy the six-view Rule 7 requirement.
@@ -340,9 +347,8 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
   turning radius, motor stall current
 - [ ] Nukhba bio still has `[NUKHBA TO WRITE…]` placeholder
 - [ ] Confirm second-chassis redundancy claim before publishing
-- [ ] Resolve **MIN_DUTY** discrepancy: brief says **15%**, README says **~13%** at 5 V / 1 kHz —
-  do not invent; ask team which is authoritative
-- [ ] Document `FORWARD = -1`, heading clockwise-positive, `SENSOR_OFFSET_MM = -10` when confirmed
+- [x] Document `FORWARD = -1` and `MIN_DUTY = 15%` from the later measured scripts
+- [ ] Document heading clockwise-positive and `SENSOR_OFFSET_MM = -10` in production code
 - [ ] Add engineering findings from brief §4.4 (IMU init order, quiet-bus calibration, heading wrap,
   fail-safe reads) once verified by the team
 
@@ -353,8 +359,6 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [ ] Camera / CV pipeline — in development
 - [ ] Competition videos — cannot be filmed until the car drives autonomously
 - [ ] Black-wall reflectivity test — gates ultrasonic redundancy decision
-- [ ] Confirm Pico pin map (GP0, GP2–GP5, GP15, GP16) before writing into README §4g
-- [ ] Confirm MIN_DUTY 13% vs 15%
 
 ### 7.6 Open questions
 

@@ -477,8 +477,8 @@ returns to idle (~10–20 mA) and stays there.
 | `RIGHT_MAX` | `[PENDING]` | `PENDING` |
 | Measured backlash / deadband | `[PENDING]` | `PENDING` |
 
-Tool: `src/pico/calibrate_servo.py` — interactive, steps the servo from the serial console so
-values can be found without re-flashing.
+Tool: `src/pico/tools/steering_calibrate.py` — interactive, steps the servo from the serial console
+so values can be found without re-flashing.
 
 ### Version 3 — planned improvements `PENDING`
 
@@ -519,7 +519,7 @@ chassis but would need revisiting on a larger vehicle.
 | Measurement | Result | Conditions | What it tells us |
 | --- | --- | --- | --- |
 | Free-run current | ~140 mA | Test rail, no load | Baseline for the power budget |
-| Minimum effective duty cycle | ~13 % | **5 V rail, 1 kHz PWM** | Below this the motor does not turn at all |
+| Minimum reliable duty cycle | 15 % | **5 V rail, 1 kHz PWM, motor installed in chassis** | Below this the wheels do not turn reliably |
 
 Because these figures were taken **at 5 V / 1 kHz, which is the rail the motor now actually runs
 on**, they are valid operating numbers rather than bench approximations. This was not true of an
@@ -562,8 +562,8 @@ only**, which is what PWM is actually for.
 | --- | --- |
 | The motor never sees over-voltage | Not on average, not on peaks, not at stall |
 | Full duty range is usable | We regained the 55 % of control range the cap was discarding |
-| Our bench measurements became valid | The 140 mA and 13 % figures were taken at 5 V — they now describe the real operating condition instead of needing to be redone |
-| Better resolution at low speed | The usable band runs from ~13 % to 100 % instead of ~6 % to 45 % |
+| Our bench measurements became valid | The 140 mA and 15 % figures were taken at 5 V — they now describe the real operating condition instead of needing to be redone |
+| Better resolution at low speed | The usable band runs from 15 % to 100 % instead of a restricted duty-capped range |
 
 **Trade-off accepted:** one more buck converter — more mass, more board area, one more component
 that can fail. We judged that acceptable against destroying the motor, especially since the motor
@@ -591,7 +591,7 @@ L298N would have been over 2 V, which on a 5 V rail would have been disqualifyin
 | Motor rated voltage | 5 V | `DONE` |
 | Motor rail | 5 V, dedicated TPS5450 buck from the actuator pack | `DONE` |
 | PWM frequency | 1 kHz | `DONE` |
-| Duty floor (minimum effective) | ~13 % at 5 V | `DONE` |
+| Duty floor (minimum reliable) | 15 % at 5 V / 1 kHz, in chassis | `DONE` |
 | Duty cap | None — the rail sets the voltage. Any cap is now a *speed* choice, not protection | `DONE` |
 | Motor stall current at 5 V | `[PENDING]` | `PENDING` |
 | Buck converter current limit vs stall current | `[PENDING]` | `PENDING` |
@@ -700,25 +700,44 @@ parallel possible without constant breakage.
 
 ## Module map
 
+**Current repository — implemented code and test evidence:**
+
 ```
 src/
 ├── pico/
-│   ├── main.py               Entry point; the fast control loop
-│   ├── drive.py              Motor: duty clamping, direction, stop
-│   ├── steering.py           Servo: angle -> pulse, end-stop enforcement
-│   ├── tof.py                VL53L1X init, XSHUT sequence, addressing, reads
-│   ├── imu.py                BNO055 heading
-│   ├── encoder.py            Pulse counting -> distance
-│   ├── comms.py              Serial protocol, Pico side
-│   └── calibrate_servo.py    Interactive calibration tool
-└── pi/
-    ├── main.py               Entry point; strategy loop
-    ├── comms.py              Serial protocol, Pi side
-    ├── vision.py             Camera capture, pillar colour, line crossings
-    ├── state_machine.py      Challenge state machines
-    ├── planner.py            Turn decisions, pillar side, parking sequence
-    └── logger.py             Run logging for post-test analysis
+│   ├── lib/                  BNO055 and PiicoDev VL53L1X drivers
+│   ├── tools/                IMU-offset and steering calibration tools
+│   ├── tests/
+│   │   ├── i2c/              I2C and XSHUT scan
+│   │   ├── imu/              Heading, sign and drift tests
+│   │   ├── tof/              One- and five-ToF bring-up tests
+│   │   ├── motor/            Polarity, driver-state, duty-floor and floor tests
+│   │   ├── steering/         Free-air and linkage sweep tests
+│   │   └── integration/      Combined Body and wheels-up interference tests
+│   └── experiments/          Superseded or broken prototypes retained as evidence
+└── pi/                       Placeholder only; Pi 5 application code not uploaded yet
 ```
+
+There are currently **29 Pico Python files**. The detailed inventory, deployment instructions and
+known inconsistencies are in [`src/pico/README.md`](src/pico/README.md). In particular, the later
+measured scripts establish `FORWARD = -1` and `MIN_DUTY = 15%`; some earlier motor tests use the
+opposite direction label or raw PWM units and must not be mistaken for production firmware.
+
+**Planned production modules — not yet implemented as separate files:**
+
+| Planned module | Controller | Hardware / responsibility |
+| --- | --- | --- |
+| `main.py` | Pico | Deterministic fast loop and safe startup |
+| `drive.py` | Pico | TB6612FNG direction, percentage duty, floor clamp and stop |
+| `steering.py` | Pico | GP0 servo PWM and calibrated endpoint enforcement |
+| `tof.py` | Pico | GP10–GP14 XSHUT sequence and VL53L1X reads |
+| `imu.py` | Pico | BNO055 heading, offsets and wrap-safe angle differences |
+| `encoder.py` | Pico | GP16 pulse counting and distance conversion |
+| `comms.py` | Pico + Pi | Serial commands, telemetry and watchdog |
+| `vision.py` | Pi 5 | Camera capture and red/green classification |
+| `state_machine.py` | Pi 5 | Open and Obstacle Challenge states |
+| `planner.py` | Pi 5 | Turns, passing side and parking sequence |
+| `logger.py` | Pi 5 | Versioned run logs for test analysis |
 
 ## Pi ↔ Pico serial protocol `PENDING`
 
@@ -916,13 +935,17 @@ Pi with a normal editor instead of over a bare terminal.
 
 1. Hold `BOOTSEL`, connect USB — the Pico mounts as a USB drive.
 2. Copy the MicroPython `.uf2` firmware onto it. It reboots into MicroPython.
-3. Copy the files from `src/pico/` to the Pico filesystem (Thonny or `mpremote`).
-4. `main.py` runs automatically at power-on.
+3. Copy the four files from `src/pico/lib/` to `/lib/` on the Pico (Thonny or `mpremote`).
+4. Copy only the tool or test being run to the Pico root. Keep motor tests off `main.py`, because
+   that filename runs automatically at power-on.
+5. Follow [`src/pico/README.md`](src/pico/README.md) for the exact file layout and safety notes.
 
 | Task | Status |
 | --- | --- |
 | MicroPython flashed | `DONE` |
 | PiicoDev VL53L1X driver installed | `DONE` |
+| Pico drivers, calibration tools and engineering tests uploaded to this repository | `DONE` |
+| Production Pico `main.py` | `PENDING` |
 | Deployment script for all `src/pico/` files | `PENDING` |
 
 ## Running the vehicle `PENDING`
@@ -1089,7 +1112,7 @@ finishing subsystems that never get integrated in time to be tuned together.
 
 ## Completed and verified
 
-- Motor driver bring-up: free-run current ~140 mA; minimum effective duty ~13 % at 5 V / 1 kHz —
+- Motor driver bring-up: free-run current ~140 mA; minimum reliable duty 15 % at 5 V / 1 kHz —
   and because the motor rail is now regulated to 5 V, these are valid operating figures
 - Servo calibration method established (current-draw criterion, both approach directions)
 - Steering conversion built and functional (servo in the old motor pocket, slotted horn, spoke to
@@ -1753,11 +1776,12 @@ the camera resource locked and requires a reboot to clear. This cost us time onc
 | I²C0 SDA (ToF + IMU) | Pico | GP8 | `DONE` |
 | I²C0 SCL (ToF + IMU) | Pico | GP9 | `DONE` |
 | ToF XSHUT ×5 | Pico | GP10 – GP14 | `DONE` |
-| Steering servo PWM | Pico | `[PENDING]` | `PENDING` |
-| Motor PWM (TB6612FNG PWMA) | Pico | `[PENDING]` | `PENDING` |
-| Motor direction (AIN1 / AIN2) | Pico | `[PENDING]` | `PENDING` |
-| Motor driver STBY | Pico | `[PENDING]` | `PENDING` |
-| Encoder input | Pico | `[PENDING]` | `PENDING` |
+| Steering servo PWM | Pico | GP0, 50 Hz | `DONE` |
+| Motor PWM (TB6612FNG PWMA) | Pico | GP2, 1 kHz | `DONE` |
+| Motor direction (AIN1 / AIN2) | Pico | GP3 / GP4 | `DONE` |
+| Motor driver STBY | Pico | GP5 | `DONE` |
+| Run button (internal pull-up, active low) | Pico | GP15 | `DONE` |
+| Encoder input | Pico | GP16 | `PLANNED` |
 | Pi ↔ Pico serial (TX/RX) | Both | `[PENDING]` | `PENDING` |
 | Camera | Pi 5 | CSI | `DONE` |
 
@@ -1767,7 +1791,7 @@ any number in this document can be traced back to the test that produced it.
 | Calibration | Method | Status |
 | --- | --- | --- |
 | Servo centre and end-stops | Current-draw method, Section 4c | `PENDING` |
-| Motor minimum duty cycle | Step duty until motion | ~13 % at 5 V `DONE` |
+| Motor minimum duty cycle | Step duty until reliable motion in chassis | 15 % at 5 V / 1 kHz `DONE` |
 | ToF address assignment | XSHUT sequencing | `DONE` |
 | ToF offset and crosstalk | Known-distance reference target | `PENDING` |
 | Baseline separation `L` | Physical measurement after mounting | `PENDING` |
