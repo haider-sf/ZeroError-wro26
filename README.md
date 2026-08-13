@@ -149,6 +149,12 @@ This section covers the physical setup and the compute setup of our autonomous c
 | Mass, race-ready | `[PENDING]` | `PENDING` |
 | Minimum turning radius | `[PENDING — see §4d]` | `PENDING` |
 
+<img src="v-photos/vehicle-rule-envelope-check.png" width="360" alt="Body shell placed inside a hand-drawn 300 by 200 millimetre rule envelope">
+
+*Early packaging check against the 300 × 200 mm footprint limit. This is not the final
+race-ready dimension measurement: the completed vehicle, including sensors and electronics,
+must still be measured in length, width and height.*
+
 **Why a converted RC chassis instead of a scratch build?**
 
 We evaluated three options before committing.
@@ -277,8 +283,19 @@ is a bang-bang actuator with exactly three achievable states — full left, cent
 that can only steer at full lock cannot follow a wall at a controlled offset, and cannot execute a
 parking manoeuvre that requires a specific radius.
 
-> **Photo placeholder:** `v-photos/steering_v0_stock.jpg`
-> *Stock gear-sector steering before modification, with the yoke visible.*
+<p>
+  <img src="v-photos/steering-v0-stock-motor-and-yoke.png" width="340" alt="Stock steering motor, sector and yoke before modification">
+  <img src="v-photos/steering-v0-yoke-and-track-rod.png" width="340" alt="Stock steering yoke connected to the front track rod">
+</p>
+
+*Version 0 before modification. Left: the stock DC steering motor and sector beside the white
+yoke. Right: the yoke, its chassis pivot and the black track rod connecting the two front
+knuckles.*
+
+<img src="v-photos/steering-v0-stock-housing-underside.png" width="340" alt="Underside of the stock steering housing">
+
+*The removed stock steering housing. Recording the original assembly before cutting or replacing
+parts gave us a reference for the factory mounting points and linkage travel.*
 
 ### Version 1 — direct servo-to-track-rod coupling (rejected on paper)
 
@@ -333,10 +350,34 @@ spoke** drops from a slot in the servo horn down to the yoke.
 **Trade-off accepted:** the slot that prevents binding is also clearance, and clearance is
 backlash. We have not yet quantified how much steering deadband this introduces.
 
-> **Photo placeholders:**
-> - `v-photos/steering_v2_servo_mounted.jpg` — servo upright in the old motor pocket
-> - `v-photos/steering_v2_spoke_linkage.jpg` — close-up of the spoke, horn slot and yoke
-> - `v-photos/steering_v2_full_left.jpg` / `..._full_right.jpg` — both lock limits
+#### Version 2 build evidence
+
+<p>
+  <img src="v-photos/steering-v2-servo-mounted.png" width="340" alt="Micro servo mounted upright in the former steering motor pocket">
+  <img src="v-photos/steering-v2-servo-horn-clearance.png" width="340" alt="Angled view of the servo horn and surrounding chassis clearance">
+</p>
+
+*The servo fitted into the stock motor pocket. These views were used to check horn sweep,
+wire clearance and access to the original yoke pivot before finalising the linkage.*
+
+<p>
+  <img src="v-photos/steering-v2-linkage-trial.png" width="340" alt="Early servo-to-yoke linkage trial">
+  <img src="v-photos/steering-v2-towerpro-servo-trial.png" width="340" alt="Alternative TowerPro micro-servo linkage trial">
+</p>
+
+*Linkage trials during Version 2. They record the physical iteration rather than claiming that
+each photographed arrangement was retained. The pivoting factory yoke remained the common
+element while servo position, horn geometry and coupling method were evaluated.*
+
+<p>
+  <img src="v-photos/steering-v2-sg90-metal-linkage-a.png" width="340" alt="SG90 linkage prototype viewed from above">
+  <img src="v-photos/steering-v2-sg90-metal-linkage-b.png" width="340" alt="Second view of the SG90 linkage prototype">
+</p>
+
+*A later SG90 linkage prototype from two angles. The images make the mechanical load path
+visible: the servo moves the coupling, the coupling rotates the white yoke, and the yoke pushes
+the original track rod. Final left- and right-lock photographs are still required after the
+safe software endpoints have been calibrated.*
 
 ### Iteration inside Version 2 — the hunting-noise problem
 
