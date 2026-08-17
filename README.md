@@ -617,6 +617,7 @@ more to us than peak power.
 | Target cruise speed, 1000 mm corridor | `[PENDING]` | `PENDING` |
 | Target cruise speed, 600 mm corridor | `[PENDING]` | `PENDING` |
 | Target speed, parking manoeuvre | `[PENDING]` | `PENDING` |
+| Provisional development speed | 35% duty, measured 0.34 m/s | `DONE` |
 
 ### First floor runs and stopping-distance test `DONE`
 
@@ -639,15 +640,16 @@ approximately 370 mm was retired because the vehicle had not yet reached full sp
 100 mm gap, including the 10 mm sensor overhang, the provisional trigger calculation was
 `410 + 100 + 10 = 520 mm`.
 
-That much warning is not reliably available at every WRO corner. The result therefore changed the
-speed strategy: 40% is likely too fast for close obstacle approaches, and stopping distance must
-be remeasured at the eventual 20–25% cruise range.
+That much warning is not reliably available at every WRO corner. This coast test was therefore
+followed by active-braking tests at several speeds.
 
 At 20% duty the motor could sustain motion after a manual push but could not reliably break static
 friction from rest. The 15% wheels-up duty floor is therefore not a floor-driving start value.
-Production control needs a short, measured kickstart followed by the lower cruise command.
+The follow-up test established a **45% kickstart for 300 ms**, followed by the selected cruise
+command. Kick duty must be at least as high as the highest cruise duty so that a faster run never
+starts with less torque than it subsequently requests.
 
-### Failed wall-stop and fail-safe rule
+### Wall-stop diagnosis and fail-safe implementation `DONE`
 
 During the first 20% wall-stop attempt, the vehicle continued into the wall and remained stalled
 until the maximum-runtime timeout. Existing power measurements contradicted the first brownout
@@ -655,9 +657,61 @@ hypothesis: Pico VSYS remained at least 4.87 V during three stall trials.
 
 The control-loop defect was a bare `tof.read()`. An exception, zero or implausibly large reading
 could prevent the stop condition from becoming true. The rule established from this failure is:
-**sensor failure is a reason to stop, not a reason to keep driving.** Production loops must catch
-read exceptions, reject invalid status values and stop after a bounded number of consecutive bad
-reads.
+**sensor failure is a reason to stop, not a reason to keep driving.**
+
+The corrected loop catches exceptions, checks status and plausibility, and stops after five
+consecutive rejected readings. A diagnostic run then exposed another failure mode: a reading
+jumped from 2119 mm to 1113 mm in 23 ms while still reporting `OK`; later samples reported
+`WrapTargetFail`. At the measured speed the car could move only about 7 mm in that interval, so the
+1006 mm change was physically impossible. The loop now also rejects any step larger than
+`MAX_JUMP = 300 mm`. Status flags remain necessary, but a physics-based jump check catches phantom
+returns that the sensor marks as valid.
+
+Before the floor test, a target at 761 mm was measured wheels-up with the motor off and at 20% and
+40% duty:
+
+| Motor condition | Bad reads | Distance range |
+| --- | ---: | ---: |
+| Off | 0/20 | 756–760 mm |
+| 20% duty | 0/30 | 755–760 mm |
+| 40% duty | 0/30 | 755–761 mm |
+
+This eliminated motor-load disturbance as the cause. Duplicate pairs in the motor-on data also
+showed that the control loop was polling cached values faster than the sensor produced new data.
+The effective fresh-measurement rate was approximately **5–6 Hz**, despite the 50 Hz control loop.
+
+### Active braking and measured stopping distance `DONE`
+
+The working stop uses the TB6612FNG's active-brake state: both direction inputs are driven high for
+300 ms, shorting the motor across itself so its generated voltage opposes rotation, and then the
+driver is released. Braking is called from a `finally` block, so wall detection, five bad reads,
+timeout and interruption all end in the same safe stop.
+
+Every characterization run used a 500 mm trigger and logged the trigger reading plus five
+post-brake readings. The surviving data set contains two runs at 25%, five at 35% and five at 45%;
+three planned 25% runs were lost during setup, so that low-speed mean is not yet strong enough for
+a final design value.
+
+| Duty | Runs | Measured speed | Mean active-braking distance | Range | SD |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 25% | 2 | 0.23 m/s | 58 mm | 43–73 mm | 15 mm |
+| 35% | 5 | 0.34 m/s | 126 mm | 117–141 mm | 9 mm |
+| 45% | 5 | 0.48 m/s | 293 mm | 255–337 mm | 30 mm |
+
+All twelve runs had 100% `OK` status, zero rejected reads and a clean wall-trigger exit. The 45%
+runs also exposed the effect of approach distance: three runs starting at 1.5 m reached 0.455 m/s
+and braked in a mean 270 mm, while two runs starting at 2.0 m reached 0.525 m/s and required a mean
+327 mm. The short run-up understated full-speed stopping distance because the car was still
+accelerating.
+
+Speed approximately doubled from 25% to 45%, while braking distance increased about five-fold.
+Stop precision also worsened with speed because the 5–6 Hz fresh-data rate lets the car travel
+farther between trigger opportunities. We selected **35% duty (0.34 m/s) as the provisional
+development speed**: its 126 ± 9 mm braking result is substantially more repeatable than 45%, while
+a straight-line estimate still leaves useful margin inside the 180-second round limit. Final
+competition speed remains provisional until turning radius, full lap time and competition-mat
+friction are measured. Three more 25% runs are also required before quoting its mean as a design
+constant.
 
 ### Turning radius measurement procedure `PENDING`
 
@@ -1095,6 +1149,8 @@ faster than guessing, every time.
 | 19 | Construct the BNO055 last and restore saved offsets | PiicoDev ToF constructors reinitialise I²C and silently kill an earlier IMU object; streaming ToFs also prevent reliable live calibration | Initialisation order is load-bearing until all drivers share one bus object |
 | 20 | Fail safe on repeated invalid sensor reads | The first wall-stop continued into the wall when an unguarded ToF read failed to satisfy the stop condition | A false stop may end a run early, but continuing blind is worse |
 | 21 | Use Welford's method for streaming variance | The naive formula collapsed real ~1 mm ToF variation to `0.00` in MicroPython single precision | Slightly more state per metric |
+| 22 | Use a 45% / 300 ms kickstart, then drop to cruise | 20% sustains rolling motion but cannot reliably overcome floor breakaway friction | Brief acceleration before the requested cruise speed |
+| 23 | Use active braking and 35% duty as the development speed | Five 35% runs measured 126 ± 9 mm braking at 0.34 m/s; 45% required 293 mm with 30 mm SD | Less straight-line speed in exchange for predictable stopping and recovery room |
 
 ## Decisions reversed after measurement
 
@@ -1115,8 +1171,9 @@ Recorded separately, because these are the entries that show the process working
 | Construct the IMU before waking the ToFs | Heading worked before ToF construction, then froze at `0.0` with no exception | ToFs are addressed first; the IMU is constructed last and saved offsets are restored |
 | Accept a printed ToF σ of `0.00` | Visible readings varied, proving the statistic was impossible; single-precision cancellation was the cause | Replaced the formula with Welford's streaming variance |
 | Explain the failed wall-stop as a brownout | Three stall trials held Pico VSYS at 4.87–4.89 V | Brownout rejected; the unguarded sensor read and fail-forward logic were identified |
+| Force SHORT mode through undocumented register writes | Full register attempts returned correct distances with `OutOfBoundsFail`; changing only the VCSEL periods reported 223 mm for a 403 mm target | Restored the driver's stock long-mode configuration; revisit SHORT only through a complete, behaviourally verified implementation |
 
-The last three rows are corrections to our own earlier documentation. We record them rather than
+The last four rows are corrections to our own earlier documentation. We record them rather than
 quietly editing them out, because a design history that contains no reversals is not a history of
 engineering.
 
@@ -1147,7 +1204,7 @@ engineering.
 | IMU heading drift over 3 laps | Medium | Turn accuracy degrades | Stationary calibration passed; measure moving drift and correct against wall references | `IN PROGRESS` |
 | Motor stall current exceeds the buck's limit | Unknown | Motor rail collapses at breakaway | Measure stall current at 5 V; bulk capacitance at the driver; soft-start ramp | `PENDING` |
 | Black walls absorb IR, degrading ToF returns | Unknown | Wall following unreliable — affects every round | Measure against real wall material at 300/600/1000 mm before deciding on ultrasonic redundancy | `PENDING` |
-| Invalid ToF read allows fail-forward motion | High | Vehicle continues toward a wall without a trusted distance | Catch exceptions, check status and stop after bounded consecutive failures | Fix `PENDING` |
+| Invalid or physically impossible ToF read allows unsafe motion | Low | Vehicle continues toward a wall or brakes for a phantom target | Catch exceptions, check status and plausibility, reject >300 mm jumps, stop after five consecutive failures | `DONE — WALL-STOP TEST` |
 | Surprise rule announced (Rule §6) | Expected in 2026 | New behaviour required late | Modular state machine — a new behaviour is a new state | Design mitigates |
 | Time: integration starts too late | **High** | Untested system at competition | Serial link is the next milestone, ahead of new features | Active |
 
@@ -1171,6 +1228,8 @@ finishing subsystems that never get integrated in time to be tuned together.
 - Wheels-up motor-interference ladder passed through 70% duty and 1 Hz reversal: 100% valid
   reference-ToF reads, zero I²C errors and no measured heading drift
 - First untethered floor runs completed; worst measured 40%-duty coast distance 410 mm
+- Fail-safe wall-stop completed with 45% / 300 ms kickstart, active braking, status and jump checks;
+  35% selected provisionally after five runs measured 0.34 m/s and 126 ± 9 mm braking distance
 - Compute rail measured at 4.87–4.89 V during three motor stall trials
 - Sensor part verified as VL53L1X by model ID register (`0x010F` = `0xEACC`)
 - ToF static characterization completed at 500/1000/1200 mm: σ 1.5/2.4/3.2 mm with 100% valid reads
@@ -1183,15 +1242,14 @@ finishing subsystems that never get integrated in time to be tuned together.
 
 ## Immediate next steps, in priority order
 
-1. **Fail-safe wall-stop** — catch ToF exceptions, reject invalid status values and stop after a
-   bounded number of consecutive bad reads
-2. **Low-speed start and stop** — add a measured kickstart, then remeasure coast distance at
-   20–25% duty
-3. **On-car IMU drift and straight-line hold** — the stationary test is complete; motion is the
+1. **Turning radius measurement** — the most important remaining geometry result; test both lock
+   directions and determine whether the car fits the 600 mm corridor
+2. **Steering play and asymmetric endpoints** — measure backlash and calibrate centre, left lock
+   and right lock before writing the steering controller
+3. **Complete the 25% braking set** — three more runs are needed before using its mean
+4. **On-car IMU drift and straight-line hold** — the stationary test is complete; motion is the
    condition that matters
-4. **Encoder hardware** — fabricate disc, verify contrast, relocate TCRT5000, calibrate mm/count
-5. **Turning radius measurement** — needs both IMU and encoder; **blocks the parking manoeuvre and
-   answers whether the car fits a 600 mm corridor**
+5. **Encoder hardware** — fabricate disc, verify contrast, relocate TCRT5000, calibrate mm/count
 6. **Black-wall reflectivity test** — VL53L1X against real wall material at 300/600/1000 mm.
    **Gates the ultrasonic redundancy decision; do not buy or fit anything before this runs**
 7. **Motor stall current at 5 V vs the buck's current limit** — completes the power budget and
@@ -1523,7 +1581,7 @@ sellers. We verified ours by reading the **model ID register `0x010F`**, which r
 This check takes one line of code and prevented us from working against the wrong datasheet. It
 also corrected our own early documentation, which described the parts as L0X.
 
-### Distance mode: SHORT — production target, not yet implemented
+### Distance mode: SHORT attempted, stock LONG retained
 
 | Mode | Nominal range | Behaviour under bright ambient light |
 | --- | --- | --- |
@@ -1531,15 +1589,25 @@ also corrected our own early documentation, which described the parts as L0X.
 | Short | up to ~1.3 m | Negligible range loss |
 
 The competition corridor is 1000 mm wide, and narrows to 600 mm in some Open Challenge rounds.
-Both fit **entirely inside short mode's range**, so we get ambient-light robustness for free with
-no loss of usable range.
+Both fit inside short mode's range, making it a useful possible refinement. The PiicoDev driver does
+not expose a mode setter and initializes the sensor in long mode: register `0x0060` read `0x0F` and
+`0x0063` read `0x0D`.
 
-This is the intended production configuration. However, the imported PiicoDev driver currently
-does not expose a distance-mode setter, so the recorded characterization runs used its default
-configuration and produced readings out to approximately 2 m. We therefore cannot yet claim that
-SHORT mode is active in firmware. Production code must either extend the driver or verify the
-sensor registers directly. Given Rule 13.18 warns that venue conditions will differ from our
-workshop, this configuration must be tested rather than assumed.
+We tried three register-level workarounds and rejected all three:
+
+| Attempt | Change | Behavioural result |
+| --- | --- | --- |
+| 1 | Full ST short-mode register set | Correct-looking distance, but every reading reported `OutOfBoundsFail` |
+| 2 | Same set without the `0x0061` write | Same failure |
+| 3 | VCSEL periods only | Status returned to `OK`, but a 403 mm target was reported as 223 mm |
+
+The registers read back as written, but the sensor behaviour was wrong. This showed that verifying
+a write landed is not the same as verifying a working configuration. We power-cycled back to the
+driver's stock setup and measured **411.4 mm mean, 1.11 mm sigma and 0/40 bad reads** against a
+403 mm reference. The wall-stop's status, plausibility and jump checks address the observed phantom
+return without relying on incomplete mode changes. LONG therefore remains the verified
+configuration; SHORT must not be claimed active unless a complete implementation passes known-
+distance behavioural tests.
 
 **Driver: PiicoDev VL53L1X**, chosen for two specific features:
 - **Per-reading status flags** — we can distinguish a valid reading from a failed one instead of
@@ -2082,8 +2150,8 @@ any number in this document can be traced back to the test that produced it.
 | --- | --- | --- | --- |
 | Motor transient browns out the Pi | Round lost | Two packs, separate bucks, star ground | `DONE` |
 | Servo transient reaches compute rail | Round lost | Servo on its own buck off the actuator pack | `DONE` |
-| ToF returns invalid reading | Controller acts on garbage distance or continues toward a wall | Check status, median-filter valid reads and stop after bounded consecutive failures | Fix `PENDING` |
-| Bright venue light degrades ToF | Range collapses | Implement and validate short distance mode | `PENDING` |
+| ToF returns invalid or impossible reading | Controller acts on garbage distance or continues toward a wall | Check status and plausibility, reject >300 mm jumps and stop after five consecutive failures | `DONE — WALL-STOP TEST` |
+| Bright venue light degrades ToF | Range collapses | Stock LONG mode retained after failed SHORT trials; test at venue and implement SHORT only with full behavioural validation | `PENDING` |
 | Black wall absorbs IR, weakening ToF return | Wall distance unreliable | Measure against real wall material; ultrasonic redundancy only if measurement justifies it | `PENDING` |
 | Motor stall current exceeds buck limit | Motor rail collapses at breakaway | Measure stall current; bulk capacitance; soft-start ramp | `PENDING` |
 | I²C bus lockup | All sensors lost at once | Timeout detection, bus reset, re-run XSHUT init | `PENDING` |

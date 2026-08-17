@@ -204,8 +204,9 @@ Hard-won, and good evidence of a real debugging process:
   difference into ±180, or a 0.1° drift reads as a 359.9° rotation.
 - **Fail-safe over fail-forward** — any sensor read inside a control loop must be wrapped in exception
   handling. A bare `tof.read()` that throws causes the stop condition never to fire.
-- **ToF short-distance mode** used exclusively — WRO corridor geometry falls within the 1.3 m ceiling;
-  ambient-light vulnerability in long mode is a configuration issue, not a hardware one.
+- **ToF distance mode** — the imported driver uses LONG. Three direct SHORT-register attempts failed
+  behavioural validation and were reverted; do not claim SHORT is active without a complete,
+  known-distance-tested implementation.
 - **Paired dual-sensor baseline** — two ToF sensors on one side at a known separation extract wall
   angle. Structurally impossible with single ultrasonic sensors.
 
@@ -313,6 +314,13 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
   trials and the fail-safe-over-fail-forward rule.
 - [x] **ToF characterization data added 2026-08-13** — 500/1000/1200 mm sample counts, means,
   noise, spread and sign-changing error; 27° cone diagnosis and status-flag limitations included.
+- [x] **Wall-stop and active-braking characterization documented 2026-08-15** — working 45% /
+  300 ms kickstart, five-read fail-safe, 300 mm jump rejection, 5–6 Hz effective ToF update rate,
+  active braking, and measured stopping distance at 25%, 35% and 45%. The 35% / 0.34 m/s setting is
+  the provisional development speed based on five runs and 126 ± 9 mm braking distance.
+- [x] **Unsafe SHORT-mode register workaround rejected 2026-08-15** — three attempts produced
+  invalid status or a 180 mm systematic distance error despite correct register readback. The
+  driver stock LONG configuration was restored and behaviourally verified.
 
 ### 7.2 In progress
 
@@ -321,9 +329,9 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
   losing content.
 - [ ] **Raw measurement files** — summary tables for ToF, IMU drift, rail voltage and wheels-up
   interference are now in README; original CSV/text logs still need adding under `docs/data/`.
-- [ ] **ToF distance-mode implementation** — README now distinguishes the intended SHORT mode from
-  the imported PiicoDev driver's actual default configuration. Extend/verify the driver before
-  claiming SHORT mode is active.
+- [ ] **ToF distance-mode implementation** — stock LONG mode is the current verified configuration.
+  SHORT remains optional and must not be claimed active until a complete implementation passes
+  known-distance behavioural tests; direct partial register writes have been rejected.
 - [ ] Pi 5 / Pico setup checklists partially `DONE`, deployment scripts still `PENDING`.
 
 ### 7.3 To do — blocking / high priority
@@ -366,6 +374,7 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 
 - [ ] On-car IMU drift under motion — not yet measured (needs a driving car)
 - [ ] Encoder bring-up and turning-radius measurement — hardware pending
+- [ ] Complete the 25% braking set — only two valid runs survived setup; three more are required
 - [ ] Camera / CV pipeline — in development
 - [ ] Competition videos — cannot be filmed until the car drives autonomously
 - [ ] Black-wall reflectivity test — gates ultrasonic redundancy decision
