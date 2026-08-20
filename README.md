@@ -851,6 +851,7 @@ parallel possible without constant breakage.
 ```
 src/
 ├── pico/
+│   ├── main.py               Integrated Pico control candidate; partly untested
 │   ├── lib/                  BNO055 and PiicoDev VL53L1X drivers
 │   ├── tools/                IMU-offset, steering and floor-centre calibration tools
 │   ├── tests/
@@ -861,33 +862,43 @@ src/
 │   │   ├── steering/         Free-air and linkage sweep tests
 │   │   └── integration/      System, wall-stop, straight-hold and turn-radius tests
 │   └── experiments/          Superseded or broken prototypes retained as evidence
-└── pi/                       Placeholder only; Pi 5 application code not uploaded yet
+└── pi/
+    ├── vision.py             Camera pillar detection and Pico UART output
+    └── README.md             Pi dependencies, protocol and validation gaps
 ```
 
-There are currently **39 Pico Python files**. The detailed inventory, deployment instructions and
-known inconsistencies are in [`src/pico/README.md`](src/pico/README.md). In particular, the later
-measured scripts establish `FORWARD = -1` and `MIN_DUTY = 15%`; some earlier motor tests use the
-opposite direction label or raw PWM units and must not be mistaken for production firmware.
+There are currently **40 Pico Python files**, including the first integrated `main.py`. The detailed
+inventory, deployment instructions and known inconsistencies are in
+[`src/pico/README.md`](src/pico/README.md). The integrated program reuses measured heading-hold,
+steering, braking and filtering constants, but its corner, side-pair centring, narrow-turn and
+camera-bias layers remain explicitly untested. The first Pi application, `src/pi/vision.py`, is also
+an integration candidate: its HSV thresholds and visual-servo parameters still require physical
+track calibration.
 
-**Planned production modules — not yet implemented as separate files:**
+**Implemented and planned production modules:**
 
-| Planned module | Controller | Hardware / responsibility |
+| Module | Controller | Hardware / responsibility |
 | --- | --- | --- |
-| `main.py` | Pico | Deterministic fast loop and safe startup |
+| `main.py` | Pico | Implemented integration candidate: startup, sensors, steering, motor, state machine, UART input and logging |
 | `drive.py` | Pico | TB6612FNG direction, percentage duty, floor clamp and stop |
 | `steering.py` | Pico | GP0 servo PWM and calibrated endpoint enforcement |
 | `tof.py` | Pico | GP10–GP14 XSHUT sequence and VL53L1X reads |
 | `imu.py` | Pico | BNO055 heading, offsets and wrap-safe angle differences |
 | `encoder.py` | Pico | GP16 pulse counting and distance conversion |
 | `comms.py` | Pico + Pi | Serial commands, telemetry and watchdog |
-| `vision.py` | Pi 5 | Camera capture and red/green classification |
+| `vision.py` | Pi 5 | Implemented integration candidate: camera capture, red/green classification and UART output |
 | `state_machine.py` | Pi 5 | Open and Obstacle Challenge states |
 | `planner.py` | Pi 5 | Turns, passing side and parking sequence |
 | `logger.py` | Pi 5 | Versioned run logs for test analysis |
 
-## Pi ↔ Pico serial protocol `PENDING`
+## Pi ↔ Pico serial protocol `IN PROGRESS`
 
-Our first real integration milestone. Design intent recorded before implementation:
+The first implemented link is one-way, line-oriented ASCII from the Pi to the Pico:
+`colour,x_norm,height_px`. The Pi sends `R` or `G` with the detected pillar's normalized horizontal
+position and pixel height, or `N,0.50,0` when no candidate is found. The Pico discards camera data
+older than 200 ms and falls back to its non-camera control layers.
+
+The longer-term bidirectional design remains:
 
 - **Line-oriented ASCII, not binary.** Slower and larger, but a human can read the link with a
   serial monitor. During bring-up, debuggability beats efficiency. This is an explicit **prototype
@@ -901,7 +912,7 @@ Our first real integration milestone. Design intent recorded before implementati
 
 | Task | Status |
 | --- | --- |
-| Protocol format defined | `PENDING` |
+| Pi → Pico vision format defined in both programs | `DONE — UNVALIDATED ON VEHICLE` |
 | Bidirectional link working | `PENDING` |
 | Watchdog tested by physically unplugging the link | `PENDING` |
 | End-to-end latency measured | `PENDING` |
@@ -1053,25 +1064,29 @@ Pi with a normal editor instead of over a bare terminal.
 1. Hold `BOOTSEL`, connect USB — the Pico mounts as a USB drive.
 2. Copy the MicroPython `.uf2` firmware onto it. It reboots into MicroPython.
 3. Copy the four files from `src/pico/lib/` to `/lib/` on the Pico (Thonny or `mpremote`).
-4. Copy only the tool or test being run to the Pico root. Keep motor tests off `main.py`, because
-   that filename runs automatically at power-on.
-5. Follow [`src/pico/README.md`](src/pico/README.md) for the exact file layout and safety notes.
+4. Copy only the tool or test being run to the Pico root during subsystem work.
+5. For an intentional integrated test, copy `src/pico/main.py` to `/main.py`; it runs automatically
+   at power-on, so perform the first verification with the vehicle safely raised.
+6. Follow [`src/pico/README.md`](src/pico/README.md) for the exact file layout and safety notes.
 
 | Task | Status |
 | --- | --- |
 | MicroPython flashed | `DONE` |
 | PiicoDev VL53L1X driver installed | `DONE` |
 | Pico drivers, calibration tools and engineering tests uploaded to this repository | `DONE` |
-| Production Pico `main.py` | `PENDING` |
+| Production-integration Pico `main.py` uploaded to the repository | `DONE — PARTLY UNTESTED` |
 | Deployment script for all `src/pico/` files | `PENDING` |
 
-## Running the vehicle `PENDING`
+## Running the current vision integration `IN PROGRESS`
 
 ```bash
 cd /home/wrofes/wro-car
-python3 src/pi/main.py --challenge open      # Open Challenge
-python3 src/pi/main.py --challenge obstacle  # Obstacle Challenge
+python3 src/pi/vision.py --debug  # Camera pipeline with protocol output to console
+python3 src/pi/vision.py          # Camera pipeline with UART output to the Pico
 ```
+
+This is not yet a complete Open or Obstacle Challenge launcher. Challenge strategy, autostart and
+full-vehicle validation remain pending.
 
 > Stop with `Ctrl+C`. Do **not** use `pkill -9` — force-killing leaves the camera resource locked
 > and requires a reboot.

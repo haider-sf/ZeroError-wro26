@@ -1,17 +1,20 @@
 # Raspberry Pi Pico firmware and test tools
 
-This directory contains the team's Pico MicroPython work up to 2026-08-17. It is an engineering
-record as well as a code directory: early smoke tests, calibration tools, later integration tests
-and third-party-compatible drivers are retained so the development path remains visible.
+This directory contains the team's Pico MicroPython work through 2026-08-20. It is an engineering
+record as well as a code directory: early smoke tests, calibration tools, later integration tests,
+third-party-compatible drivers and the first submitted integrated `main.py` are retained.
 
-There is **no production `main.py` yet**. The imported files keep descriptive test and tool names
-so measured session routines remain distinct from the final production program. The team may use
-a new Pico for the final build.
+`main.py` is the current production-integration candidate. It combines the measured P-only heading
+hold and fail-safe wall stop with still-untested corner turns, paired-side-sensor centring,
+narrow-corridor reversing and camera heading bias. Its presence does not mean those integrated
+layers have passed vehicle validation. The team may also use a new Pico for the final build, so
+pins, offsets and calibration still need reconfirmation before deployment.
 
 ## Directory map
 
 ```text
 src/pico/
+├── main.py                 Integrated vehicle-control candidate; partly untested
 ├── lib/                    Drivers copied to `/lib` on the Pico
 │   ├── bno055.py
 │   ├── bno055_base.py
@@ -62,15 +65,19 @@ backlash-band midpoint. The measured safe endpoints are 1480 us left and 1010 us
 approaching centre from opposite directions settled about 60 us apart, demonstrating linkage
 backlash. Recalibrate for the current mechanism and approach direction.
 
-## Deploying a test to the Pico
+## Deploying to the Pico
 
 1. Flash MicroPython to the Pico.
 2. Copy all four files from `src/pico/lib/` to `/lib/` on the Pico. Their filenames and flat
    placement are required by imports such as `import bno055` and
    `from PiicoDev_VL53L1X import PiicoDev_VL53L1X`.
-3. Copy **one** required tool or test to the Pico root and run it from Thonny or `mpremote`.
-4. For any motor or steering test, put the vehicle on blocks first and keep the wheels clear.
-5. Stop the test normally and confirm PWM and STBY return to the safe state.
+3. For engineering work, copy **one** required tool or test to the Pico root and run it from Thonny
+   or `mpremote`.
+4. Copy `src/pico/main.py` to `/main.py` only for an intentional integrated-vehicle test; it starts
+   automatically at power-on.
+5. For any motor, steering or integrated test, put the vehicle on blocks first and keep the wheels
+   clear during initial verification.
+6. Stop the test normally and confirm PWM and STBY return to the safe state.
 
 The rebuilt vehicle's GP9 fault is the important compatibility distinction: routines written after
 the rebuild use GP6/GP7, while preserved wall-stop and braking-session routines still record the
@@ -85,6 +92,8 @@ mpremote fs cp src/pico/lib/PiicoDev_Unified.py :/lib/PiicoDev_Unified.py
 mpremote fs cp src/pico/lib/PiicoDev_VL53L1X.py :/lib/PiicoDev_VL53L1X.py
 mpremote fs cp src/pico/tests/tof/sensor_bringup_final.py :/sensor_bringup_final.py
 mpremote run src/pico/tests/tof/sensor_bringup_final.py
+# After bench verification, for an intentional integrated run:
+mpremote fs cp src/pico/main.py :/main.py
 ```
 
 ## Known inconsistencies — read before running
@@ -99,7 +108,10 @@ mpremote run src/pico/tests/tof/sensor_bringup_final.py
   evidence means a single centre value cannot be assumed independent of steering history.
 - **Straight-line controllers:** the P and PI straight-line-hold routines are retained as confirmed
   tested-session evidence. They remain under `tests/integration/` so they are not confused with the
-  future final `main.py`.
+  integrated `main.py`; only the P-only baseline and wall-stop layers have prior measured evidence.
+- **Integrated status:** corner turning, paired-side-sensor centring, narrow reversing and camera
+  bias are explicitly untested in `main.py`. Do not describe the complete firmware as validated
+  until those layers pass physical tests.
 - **I2C speed:** the imported sensor scripts use 100 kHz, while the earlier loop-rate experiment
   was recorded at 400 kHz. This must be deliberately standardised in production firmware.
 - **GPIO conflict:** `experiments/Multiple_LEDs.py` drives GP13–GP15, which are now ToF shutdown
