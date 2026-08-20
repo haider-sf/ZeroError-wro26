@@ -3,15 +3,25 @@
 ## Mandatory finished-vehicle views
 
 Rule 7 requires photographs of the completed vehicle from the front, rear, left, right, top and
-bottom. These six photographs are still pending. Build-process photographs below do not replace
-that requirement.
+bottom. All six current assembled-vehicle views were added on 2026-08-20. Replace or re-shoot
+these views if the final hardware arrangement changes. Build-process photographs below do not
+replace that requirement.
 
-- [ ] Front
-- [ ] Rear
-- [ ] Left
-- [ ] Right
-- [ ] Top
-- [ ] Bottom
+- [x] Front
+- [x] Rear
+- [x] Left
+- [x] Right
+- [x] Top
+- [x] Bottom
+
+| File | Visible evidence |
+| --- | --- |
+| `vehicle-front.png` | Front chassis, steering wheels, front ToF board and layered electronics deck |
+| `vehicle-rear.png` | Rear chassis, drive wheels, rear ToF board, Pi 5 deck and power connector |
+| `vehicle-left.png` | Left-side wheel profile, two ToF boards, layered electronics, Pi 5 and power converter |
+| `vehicle-right.png` | Right-side wheel profile, two ToF boards, layered electronics, wiring and power converter |
+| `vehicle-top.png` | Top layout of Pi 5, Pico, sensor/control boards, wiring and deck supports |
+| `vehicle-bottom.png` | Bottom chassis, wheel and axle layout, battery compartment and underside hardware |
 
 ## Steering modification process
 

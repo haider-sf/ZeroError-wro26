@@ -42,7 +42,8 @@ The team is building a **fully autonomous 1:16 scale self-driving car** that mus
 1. **Open Challenge** — three laps of a track with a randomised inner-wall configuration.
 2. **Obstacle Challenge** — the same track plus red/green pillars (traffic signs), which must be
    passed on the correct side: **red = pass on the right, green = pass on the left**.
-3. **Parallel parking** — park in a lot marked by two magenta limiters.
+3. **Current parking scope** — parking-in is descoped; parking-lot start/exit is retained under
+   Rule 1.8.1. Current target: **107/122 points**.
 
 **Three students, three layers:**
 
@@ -61,15 +62,29 @@ Coach: Haider (principal architect).
 - **Compute:** Raspberry Pi 5 (brain — vision + strategy) + Raspberry Pi Pico (body controller —
   real-time fast loop, MicroPython)
 - **Motor driver:** TB6612FNG. `FORWARD = -1` (direction B drives forward). `MIN_DUTY = 15%` at 5 V / 1 kHz
-- **Power:** Two 3S LiPo packs; dedicated regulated 5 V TPS5450 buck for the motor rail; TPS5450 for
-  the compute rail; star-ground topology; DPDT switch for simultaneous rail isolation.
-  **The EN pin on the TPS5450 must float-to-run, never be tied to VIN.**
+- **Power:** Intended final architecture: two 3S LiPo packs, separate regulated actuator and
+  compute feeds, star-ground topology and simultaneous rail isolation. The current physical build
+  has **no Pi 5 power provision**; integration requires a dedicated ≥3 A buck on a separate
+  star-grounded feed, not the Pico's warm LM2596 rail. Do not describe the intended dual-pack
+  architecture as already implemented. **The EN pin on the TPS5450 must float-to-run, never be
+  tied to VIN.**
 - **Sensors:** Five VL53L1X ToF distance sensors (confirmed L1X — model-ID register `0x010F` = `0xEACC`),
   BNO055 IMU, reflective optical encoder (TCRT5000-based), RPi Camera Module 3 Wide
 - **Sensor offset:** `SENSOR_OFFSET_MM = -10` (sensor sits 10 mm ahead of the bumper)
 - **Heading convention:** clockwise-positive — a right turn increases heading
-- **Bus:** all ToF + IMU on one I²C bus (I2C0, GP8/GP9). IMU at `0x28` (ADR soldered to GND, pads
-  bridged). ToF sensors readdressed to `0x30`–`0x34` by SHUT-sequencing.
+- **Measured geometry (15–17 Aug 2026):** track width `w = 90 mm`; overall tyre width 105 mm;
+  current rear-axle-centreline-to-ToF-face `L_f = 210 mm` (remeasure after bracket); turning radius
+  496 mm left / 504 mm right, design `R = 504 mm`; swept annulus `R_o = 588 mm`, `R_i = 459 mm`,
+  width 129 mm. A single-arc 90° turn is not feasible in the 600 mm corridor; narrow Open uses a
+  still-untested multi-point turn.
+- **Current steering/control truth:** safe endpoints 1480 µs left and 1010 µs right;
+  `CENTRE_US = 1262`; backlash band ~1226–1286 µs (~58–60 µs, midpoint ~1256);
+  `KP_US_PER_DEG = 15`, `KI_US_PER_DEG_S = 0`, `TRIGGER_MM = 700`, `MAX_JUMP = 120`.
+  P-only straight hold is confirmed: 1.2–1.6° peak, ~1.2° steady and ~23 mm lateral over ~2 m.
+- **Bus:** the rebuilt vehicle's current sensor bus is I2C1 on GP6 SDA / GP7 SCL. GP9 is known
+  damaged and GP8 is unused. Historical imported tests may still show the retired I2C0 GP8/GP9
+  wiring and must not be treated as current hardware authority. IMU is at `0x28` (ADR soldered to
+  GND, pads bridged). ToF sensors are readdressed to `0x30`–`0x34` by SHUT-sequencing.
 
 ### Pico pin map
 
@@ -80,8 +95,10 @@ Coach: Haider (principal architect).
 | GP3 | Motor AIN1 |
 | GP4 | Motor AIN2 |
 | GP5 | Motor STBY |
-| GP8 | I2C0 SDA |
-| GP9 | I2C0 SCL |
+| GP6 | I2C1 SDA (current rebuilt sensor bus) |
+| GP7 | I2C1 SCL (current rebuilt sensor bus) |
+| GP8 | Unused on rebuilt vehicle; legacy I2C0 SDA in historical tests |
+| GP9 | Known damaged; legacy I2C0 SCL in historical tests |
 | GP10–GP14 | ToF SHUT lines |
 | GP15 | Run button (internal pull-up, active low) |
 | GP16 | Encoder (planned) |
@@ -115,6 +132,13 @@ attribution where students worked together.
 
 ### Vehicle constraints to state in the documentation
 - Max dimensions **300 × 200 mm, 300 mm height** (rule 9.17); max **1.5 kg**
+- Open corridor is **1000 or 600 mm**, ±100 mm at the International Final; use 500 mm as the
+  narrow worst case for international progression. Obstacle is always **1000 ±10 mm**.
+- In Open Challenge, outer-wall contact is prohibited; interior-wall contact is tolerated only if
+  nothing moves.
+- **Rule 11.10 is open:** Pi 5 Wi-Fi/Bluetooth must be demonstrably disabled; Pico non-W has no
+  radio. Do not claim implementation complete.
+- Mass remains unmeasured against the 1.5 kg limit.
 - **Rule 11.3 permits FWD, RWD and 4WD.** It prohibits **only differential drive** (steering by
   independent left/right motor speed). Do **not** write that 4WD is prohibited — that is a
   previously-corrected error and must not reappear.
@@ -136,7 +160,8 @@ fill the gaps.
 - Steering calibration: LEFT / CENTER / RIGHT endpoints and how they were found — the largest wheel
   deflection reached at **idle servo current**, *not* by driving into the mechanical stop. Note the
   left/right asymmetry.
-- Turning radius, measured empirically (`R = s/Δθ` from encoder + IMU)
+- Turning radius, measured from the rear-axle-centre chord after an IMU-terminated 180° arc;
+  three runs in each direction
 
 **Power and sense management**
 - Battery architecture, buck converters, star ground, rail isolation
@@ -145,9 +170,11 @@ fill the gaps.
   of showing.
 
 **Obstacle management**
-- Pillar detection: **geometry-based is primary; camera colour detection is the upgrade layer**
+- Pillar strategy: camera visual servoing selected over two extra side ToFs. Pi sends
+  `colour, x_norm, height_px`; Pico maps bearing to heading-setpoint offset; camera loss falls back
+  to wall following.
 - Red/green passing logic (red → right, green → left)
-- Parking approach
+- Parking-lot start/exit only; parking-in descoped
 - Wall-following and corner strategy
 
 **Software**
@@ -247,6 +274,8 @@ Propose structural changes before making them — reorganising affects the whole
 - **Never invent measurements or results.** If a section needs a number the team hasn't measured, write
   `TODO: measure` and log it in §7.5. **Fabricated data is worse than an obvious gap** — a judge who
   spots invented evidence will distrust the whole document.
+- **Treat supplied tested-session scripts and logs as engineering evidence.** Organise and document
+  them without initiating a code review. Review implementation details only when the user asks.
 - **Explain why, not just what.** "We chose X" scores poorly. "We chose X because we measured Y, which
   ruled out Z" is what the rubric rewards. Every significant choice should show its reasoning.
 - **Flag rule violations.** If content contradicts the rules, say so and cite the rule number.
@@ -275,8 +304,8 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
   charge protocol).
 - [x] **Sense management** written (VL53L1X verification, SHORT mode, XSHUT addressing, loop-rate
   ~555/s and retired workarounds, paired-baseline plan, LiDAR/ultrasonic rejection reasoning).
-- [x] **Obstacle / parking / wall-follow strategy** sketched (geometry-primary, Rule 9.19 sides,
-  state-machine ASCII, parking bay scaling argument).
+- [x] **Obstacle / parking / wall-follow strategy** sketched (camera visual servoing for pillars,
+  Rule 9.19 sides, state-machine ASCII, parking-lot-start scaling argument).
 - [x] **Software architecture** — Body / Senses / Brain; module map; Pi↔Pico intent; build/flash
   outline for both controllers.
 - [x] **Reversed-decisions log** present (Section 8 + “Decisions reversed after measurement”).
@@ -298,6 +327,9 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Steering build-process photos added 2026-08-13** — ten resized/source-compliant images in
   `v-photos/`, indexed in `v-photos/README.md`, with selected chronological evidence embedded in
   README Sections 4a and 4c. These do not count as the six mandatory final-vehicle views.
+- [x] **Six current assembled-vehicle views added 2026-08-20** — front, rear, left, right, top and
+  bottom views are stored in `v-photos/`, indexed there and embedded in README Section 4a.
+  Re-shoot all six views if the final hardware arrangement changes.
 - [x] **Pico engineering code imported 2026-08-13** — 29 MicroPython files organised under
   `src/pico/lib`, `tools`, `tests` and `experiments`; actual deployment instructions, hardware
   mapping and known historical hazards documented in `src/pico/README.md`.
@@ -317,10 +349,22 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] **Wall-stop and active-braking characterization documented 2026-08-15** — working 45% /
   300 ms kickstart, five-read fail-safe, 300 mm jump rejection, 5–6 Hz effective ToF update rate,
   active braking, and measured stopping distance at 25%, 35% and 45%. The 35% / 0.34 m/s setting is
-  the provisional development speed based on five runs and 126 ± 9 mm braking distance.
+  historical evidence for those run-ups only. Later 15–17 August evidence superseded the fixed-
+  speed interpretation, raised the trigger to 700 mm and tightened `MAX_JUMP` to 120 mm.
 - [x] **Unsafe SHORT-mode register workaround rejected 2026-08-15** — three attempts produced
   invalid status or a 180 mm systematic distance error despite correct register readback. The
   driver stock LONG configuration was restored and behaviourally verified.
+- [x] **External Pico code compared and imported 2026-08-17** — compared all 39 external Python
+  files, verified the 29 already mapped files were unchanged, and imported only 10 new files:
+  GPIO/IMU/motor checks, rebuilt-system and floor tests, steering calibration, braking/wall-stop
+  history, confirmed P/PI straight-line-hold routines and turn-radius measurement. No production
+  `src/pico/main.py` was created. Current rebuilt sensor wiring is I2C1 GP6/GP7; GP9 is damaged,
+  while preserved legacy tests still identify their old GP8/GP9 bus.
+- [x] **15–17 August trusted session evidence documented 2026-08-17** — reconciled the compliance
+  audit, revised 107/122 scope, passed post-rewire bench checks, IMU orientation/sign/units,
+  steering endpoints and backlash, permanent `KI = 0` decision, accepted P-only straight hold,
+  transient 35%-duty speed and revised braking/filter constants, measured track/radius/swept
+  geometry, narrow multi-point-turn decision and camera visual-servo strategy.
 
 ### 7.2 In progress
 
@@ -336,13 +380,22 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 
 ### 7.3 To do — blocking / high priority
 
+- [ ] **Corner validation:** five consecutive 90° corners in a 1000 mm corridor without
+  outer-wall contact. This is the highest next step.
+- [ ] **Narrow Open extension:** implement and test the selected multi-point turn after the
+  1000 mm single-arc state is reliable.
+- [ ] **Open compliance/integration blockers:** race-ready mass, Rule 11.10 radio-off procedure,
+  and dedicated Pi 5 ≥3 A power feed.
 - [ ] **Complete production code in `src/`**
-  - [x] Pico MicroPython drivers, calibration tools and engineering tests — 29 files uploaded
+  - [x] Pico MicroPython drivers, calibration tools and engineering tests — 39 files uploaded
   - [ ] Pico production `main.py`, encoder, serial watchdog and unified fast loop
+  - [ ] Confirm the final controller board and sensor-bus pins; the rebuilt test vehicle uses
+    I2C1 GP6/GP7 after GP9 damage, but the team may use a new Pico for production
+  - [ ] Integrate the multi-ToF sensor set into the final production routine
   - [ ] Pi 5 vision / strategy pipeline — **empty**
-  - [ ] Check against the first-commit deadline: **≥1/5 of final code, ≥2 months before competition**
-- [ ] **Finished-vehicle photos** — front, rear, left, right, top and bottom → `v-photos/`.
-  Build-process photos now exist, but they do not satisfy the six-view Rule 7 requirement.
+  - [x] First-commit schedule audited: 18 commits existed, but the first had no code, so the 1/5
+    timing requirement was not met. Do not rewrite history. The log's national Appendix C
+    assessment is event context, not a universal exemption.
 - [ ] **Videos** — one per challenge, ≥30 s autonomous driving, YouTube links → `video/video.md`
   (placeholder only)
 - [ ] Create `other/` (datasheets, `calibration_log.md`, `test_log.md` are referenced but folder
@@ -361,8 +414,8 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 - [x] Reversed-decisions log in the README
 - [ ] Measurement data tables → `docs/data/` (or equivalent)
 - [ ] Engineering journal entries → `docs/engineering-journal/` (placeholder only)
-- [ ] Fill Body-layer PENDING numbers: track width, L×W×H, mass, servo LEFT/CENTER/RIGHT,
-  turning radius, motor stall current
+- [ ] Fill remaining Body-layer PENDING numbers: final L×W×H after brackets, race-ready mass and
+  motor stall current. Track width, turning radius, steering endpoints and backlash are complete.
 - [ ] Nukhba bio still has `[NUKHBA TO WRITE…]` placeholder
 - [ ] Confirm second-chassis redundancy claim before publishing
 - [x] Document `FORWARD = -1` and `MIN_DUTY = 15%` from the later measured scripts
@@ -373,11 +426,14 @@ at the end. Keep it honest — an accurate list of gaps is more useful than an o
 ### 7.5 Blocked / waiting on the team
 
 - [ ] On-car IMU drift under motion — not yet measured (needs a driving car)
-- [ ] Encoder bring-up and turning-radius measurement — hardware pending
+- [ ] Encoder bring-up — hardware pending; turning radius is complete by chord/IMU method
 - [ ] Complete the 25% braking set — only two valid runs survived setup; three more are required
 - [ ] Camera / CV pipeline — in development
 - [ ] Competition videos — cannot be filmed until the car drives autonomously
 - [ ] Black-wall reflectivity test — gates ultrasonic redundancy decision
+- [ ] Rule 11.10 Pi Wi-Fi/Bluetooth disablement and judge-verification procedure
+- [ ] Dedicated ≥3 A Pi 5 power feed on the intended star-grounded architecture
+- [ ] Narrow-corridor multi-point turn implementation and test
 
 ### 7.6 Open questions
 

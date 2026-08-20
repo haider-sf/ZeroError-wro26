@@ -41,8 +41,9 @@ second challenge rather than existing as a standalone event.
    - **Red pillars:** must be passed on the right (Rule 9.19)
    - **Green pillars:** must be passed on the left (Rule 9.19)
 
-3. Upon completing the final lap, the vehicle must locate the designated magenta parking lot and
-   execute a parallel parking manoeuvre.
+3. Parking is part of the Obstacle Challenge scoring rather than a separate event. For the
+   September scope, we retained the **parking-lot start** and exit (Rule 1.8.1, 7 points) but
+   descoped parking-in (Rules 1.8.2/1.8.3, 22 points). Our revised target is **107/122 points**.
 
 **Field Specifications**
 
@@ -51,21 +52,21 @@ second challenge rather than existing as a standalone event.
 | Mat size | 3200 × 3200 mm | 13.1 |
 | Inner racetrack | 3000 × 3000 mm | 13.1 |
 | Wall height, exterior and interior | 100 mm | 13.3, 13.5 |
-| Corridor width, Open Challenge | **1000 mm or 600 mm** (randomised per round) | §8 |
-| Corridor width, Obstacle Challenge | Always 1000 mm | §8 |
+| Corridor width, Open Challenge | **1000 mm or 600 mm**, ±100 mm at the International Final; design against 500 mm worst case for international progression | §8 |
+| Corridor width, Obstacle Challenge | Always **1000 ±10 mm** at the International Final | §8 |
 | Traffic sign dimensions | 50 × 50 × 100 mm | 13.19 |
 | Red sign colour | RGB (238, 39, 55) | 13.21 |
 | Green sign colour | RGB (68, 214, 44) | 13.22 |
 | Parking limitation colour | Magenta, RGB (255, 0, 255) | 13.27 |
 | Parking lot width | 200 mm | §5 |
 | Parking lot length | **1.5 × robot length** | §5 |
-| Maximum vehicle dimensions | 300 × 200 mm, 300 mm height | 9.17 |
+| Maximum vehicle dimensions | 300 × 200 mm, 300 mm height; maximum mass 1.5 kg | 9.17 / 11.2 |
 
 Two constraints from this table shaped our design more than any other:
 
-- **The 600 mm corridor.** The Open Challenge corridor can be narrow, and the width is randomised
-  before each round. Our vehicle must fit and turn inside 600 mm, which puts a hard ceiling on
-  both our vehicle length and our minimum turning radius.
+- **The narrow Open corridor.** The nominal 600 mm corridor may be 500 mm at the International
+  Final tolerance. Our geometry measurements showed that a single-arc 90° turn is not feasible
+  with our 504 mm design radius, so narrow Open rounds require a multi-point turn.
 - **The parking lot scales with our own vehicle.** Because the bay is 1.5 × our robot's length,
   a longer robot does *not* get a proportionally easier park — the clearance stays at 0.5 × our
   length regardless. But a longer robot needs a larger turning radius to enter that bay. **Shorter
@@ -85,12 +86,13 @@ Two constraints from this table shaped our design more than any other:
 | Rule | What it means for us |
 | --- | --- |
 | 9.17 | Dimensions are checked. Exceeding them after a 3-minute repair window ends the round |
-| 9.18 | In the Open Challenge the vehicle **may not touch the outer boundary wall** at all |
+| 9.18 | In the Open Challenge the vehicle **may not touch the outer boundary wall** at all. Interior-wall contact is tolerated only if nothing moves |
 | 9.20 / 13.15 | A pillar may be touched only if it stays within an 85 mm circle around its seat |
 | 9.24.7 | Touching a **parking lot limitation** stops the round |
 | 9.21 | Driving opposite the round direction is allowed for two sections only |
 | 13.18 | Mat and object colours may differ from spec — on-site colour recalibration is expected |
 | §6 | A **surprise rule** is expected in the 2026 season. Our software must be modular enough to absorb a new behaviour |
+| 11.10 | Built-in wireless must be off and judge-verifiable. The Pico is a non-W model with no radio; the Pi 5 Wi-Fi/Bluetooth shutdown procedure is still `OPEN` |
 
 ---
 
@@ -195,10 +197,31 @@ This section covers the physical setup and the compute setup of our autonomous c
 | Drive configuration | Rear-wheel drive, single motor | `DONE` |
 | Steering | Front-wheel Ackermann, servo actuated | `DONE` |
 | Wheelbase | 160 mm | `DONE` |
-| Track width | `[PENDING]` | `PENDING` |
+| Track width, wheel centre to wheel centre | 90 mm | `DONE — 3 READINGS` |
+| Overall width at front tyres | 105 mm | `DONE — 3 READINGS` |
+| Rear axle centreline to current front ToF face, `L_f` | 210 mm; remeasure after acrylic bracket | `DONE — CURRENT MOUNT` |
 | Overall L × W × H | `[PENDING — must be inside 300 × 200 × 300 mm, Rule 9.17]` | `PENDING` |
-| Mass, race-ready | `[PENDING]` | `PENDING` |
-| Minimum turning radius | `[PENDING — see §4d]` | `PENDING` |
+| Mass, race-ready | `[PENDING — 1.5 kg maximum, Rule 11.2]` | `PENDING / OPEN COMPLIANCE RISK` |
+| Minimum turning radius | Left 496 mm; right 504 mm; design `R = 504 mm` | `DONE — 3 RUNS EACH` |
+
+**Current assembled-vehicle views**
+
+<p>
+  <img src="v-photos/vehicle-front.png" width="360" alt="Front view of the current assembled vehicle">
+  <img src="v-photos/vehicle-rear.png" width="360" alt="Rear view of the current assembled vehicle">
+</p>
+<p>
+  <img src="v-photos/vehicle-left.png" width="360" alt="Left view of the current assembled vehicle">
+  <img src="v-photos/vehicle-right.png" width="360" alt="Right view of the current assembled vehicle">
+</p>
+<p>
+  <img src="v-photos/vehicle-top.png" width="360" alt="Top view of the current assembled vehicle">
+  <img src="v-photos/vehicle-bottom.png" width="360" alt="Bottom view of the current assembled vehicle">
+</p>
+
+*Current assembled configuration on 2026-08-20, showing the layered electronics, Raspberry Pi 5,
+Raspberry Pi Pico, sensors, wiring, power hardware and underside chassis. All six current assembled
+views exist. These views must be re-shot if the final hardware arrangement changes.*
 
 <img src="v-photos/vehicle-rule-envelope-check.png" width="360" alt="Body shell placed inside a hand-drawn 300 by 200 millimetre rule envelope">
 
@@ -284,6 +307,10 @@ low-level physical control separately.
 - **Raspberry Pi Pico (The Body controller):** A dedicated real-time controller in constant serial
   communication with the Pi 5. It executes time-critical tasks: PWM for steering and drive, ToF
   sensor polling over I²C, IMU reads, and wheel encoder pulse counting.
+
+This is the **intended final architecture**. The current physical build has no Pi 5 power
+provision. Integration requires a dedicated **≥3 A, 5 V buck** on a separate feed with the shared
+star ground; the Pi must not be added to the Pico's already-warm LM2596 rail.
 
 **Why two layers?**
 
@@ -399,7 +426,8 @@ spoke** drops from a slot in the servo horn down to the yoke.
   without touching code.
 
 **Trade-off accepted:** the slot that prevents binding is also clearance, and clearance is
-backlash. We have not yet quantified how much steering deadband this introduces.
+backlash. Floor testing measured a hysteresis band of approximately **1226–1286 µs**, about
+**58–60 µs** wide with midpoint near **1256 µs**.
 
 #### Version 2 build evidence
 
@@ -472,15 +500,30 @@ returns to idle (~10–20 mA) and stays there.
 
 | Parameter | Value | Status |
 | --- | --- | --- |
-| `SERVO_CENTRE` | `[PENDING]` | `PENDING` |
-| `LEFT_MAX` | `[PENDING]` | `PENDING` |
-| `RIGHT_MAX` | `[PENDING]` | `PENDING` |
-| Measured backlash / deadband | `[PENDING]` | `PENDING` |
+| `CENTRE_US` | 1262 µs | `DONE — RESTORED AFTER FLOOR TESTS` |
+| Safe left endpoint | 1480 µs | `DONE` |
+| Safe right endpoint | 1010 µs | `DONE` |
+| Measured backlash / hysteresis | ~1226–1286 µs; width ~58–60 µs; midpoint ~1256 µs | `DONE` |
 
 Tool: `src/pico/tools/steering_calibrate.py` — interactive, steps the servo from the serial console
 so values can be found without re-flashing.
 
-### Version 3 — planned improvements `PENDING`
+### Straight-line controller result `DONE`
+
+Five P-only baseline runs at `CENTRE_US = 1262` accepted **1.2–1.6° peak heading error**,
+approximately **1.2° steady error**, and about **23 mm net lateral displacement over 2 m**.
+Straight-line hold is therefore confirmed.
+
+An integral trial at `KI = 6` across four runs never settled and could perform worse than the
+P-only baseline. The linkage backlash is a deadzone: the integral accumulates while the wheels do
+not move, then crosses the slack suddenly and reverses, creating a structural limit cycle.
+Integral action was removed permanently: **`KI = 0`**.
+
+The derivative term is deferred until corner testing supplies a real 90° heading step. If damping is
+needed, the BNO055's native `imu.gyro()` rate is preferable to differencing quantised Euler
+angles. `KD = 0` remains the measured straight-line baseline.
+
+### Version 3 — possible mechanical improvements `PENDING`
 
 - **Backlash reduction.** If the measured deadband affects wall following, a light spring preload
   would take up the slack in one direction.
@@ -606,8 +649,8 @@ target speed:
   effect, so achievable steering error grows with speed. The narrow-corridor rounds set the ceiling.
 - **Rule 9.18.** In the Open Challenge, touching the outer wall is not permitted at all. Speed that
   produces occasional wall contact is not a minor cost — it is a zero.
-- **The parking phase.** Parallel parking has a far tighter geometric tolerance than open-corridor
-  driving and requires low speed with repeatable distance control.
+- **The parking-lot start.** The retained exit manoeuvre still benefits from low speed and
+  repeatable distance control; parking-in itself is outside the current 107-point scope.
 
 Torque demand is dominated by **breakaway from standstill**, which is why the duty floor matters
 more to us than peak power.
@@ -616,8 +659,8 @@ more to us than peak power.
 | --- | --- | --- |
 | Target cruise speed, 1000 mm corridor | `[PENDING]` | `PENDING` |
 | Target cruise speed, 600 mm corridor | `[PENDING]` | `PENDING` |
-| Target speed, parking manoeuvre | `[PENDING]` | `PENDING` |
-| Provisional development speed | 35% duty, measured 0.34 m/s | `DONE` |
+| Target speed, parking-lot exit | `[PENDING]` | `PENDING` |
+| Development command | 35% duty; **not a fixed speed** | `DONE — ASSUMPTION CORRECTED` |
 
 ### First floor runs and stopping-distance test `DONE`
 
@@ -663,9 +706,10 @@ The corrected loop catches exceptions, checks status and plausibility, and stops
 consecutive rejected readings. A diagnostic run then exposed another failure mode: a reading
 jumped from 2119 mm to 1113 mm in 23 ms while still reporting `OK`; later samples reported
 `WrapTargetFail`. At the measured speed the car could move only about 7 mm in that interval, so the
-1006 mm change was physically impossible. The loop now also rejects any step larger than
-`MAX_JUMP = 300 mm`. Status flags remain necessary, but a physics-based jump check catches phantom
-returns that the sensor marks as valid.
+1006 mm change was physically impossible. The first jump limit was `MAX_JUMP = 300 mm`; later
+moving trials tightened it to **120 mm**. At 120 mm, a 178 mm phantom was correctly rejected and
+there were **no false rejections across nine runs**. Status flags remain necessary, but a
+physics-based jump check catches phantom returns that the sensor marks as valid.
 
 Before the floor test, a target at 761 mm was measured wheels-up with the motor off and at 20% and
 40% duty:
@@ -687,7 +731,7 @@ The working stop uses the TB6612FNG's active-brake state: both direction inputs 
 driver is released. Braking is called from a `finally` block, so wall detection, five bad reads,
 timeout and interruption all end in the same safe stop.
 
-Every characterization run used a 500 mm trigger and logged the trigger reading plus five
+Every early characterization run used a 500 mm trigger and logged the trigger reading plus five
 post-brake readings. The surviving data set contains two runs at 25%, five at 35% and five at 45%;
 three planned 25% runs were lost during setup, so that low-speed mean is not yet strong enough for
 a final design value.
@@ -698,7 +742,9 @@ a final design value.
 | 35% | 5 | 0.34 m/s | 126 mm | 117–141 mm | 9 mm |
 | 45% | 5 | 0.48 m/s | 293 mm | 255–337 mm | 30 mm |
 
-All twelve runs had 100% `OK` status, zero rejected reads and a clean wall-trigger exit. The 45%
+These values remain valid measurements for their particular run-up distances; they are **not
+universal duty-to-speed or braking constants**. All twelve runs had 100% `OK` status, zero
+rejected reads and a clean wall-trigger exit. The 45%
 runs also exposed the effect of approach distance: three runs starting at 1.5 m reached 0.455 m/s
 and braked in a mean 270 mm, while two runs starting at 2.0 m reached 0.525 m/s and required a mean
 327 mm. The short run-up understated full-speed stopping distance because the car was still
@@ -706,37 +752,42 @@ accelerating.
 
 Speed approximately doubled from 25% to 45%, while braking distance increased about five-fold.
 Stop precision also worsened with speed because the 5–6 Hz fresh-data rate lets the car travel
-farther between trigger opportunities. We selected **35% duty (0.34 m/s) as the provisional
-development speed**: its 126 ± 9 mm braking result is substantially more repeatable than 45%, while
-a straight-line estimate still leaves useful margin inside the 180-second round limit. Final
-competition speed remains provisional until turning radius, full lap time and competition-mat
-friction are measured. Three more 25% runs are also required before quoting its mean as a design
-constant.
+farther between trigger opportunities. The earlier five-run 35% result, **0.34 m/s and
+126 ± 9 mm**, remains measured evidence for those run-ups but is superseded as a general operating
+constant. At the same 35% duty, segment speeds over a later 2.5 m run rose from **0.30 to 0.48 to
+0.54 m/s**: the vehicle was still accelerating. Later straight runs braked in **210–250 mm**, so
+`TRIGGER_MM` was revised from 500 to **700 mm**. Encoder-based speed control is the proper future
+fix but is not scheduled; the conservative trigger is the interim mitigation.
 
-### Turning radius measurement procedure `PENDING`
+### Turning radius measurement and result `DONE`
 
-The Brain layer's path planner needs the minimum turning radius **measured at the rear axle
-centre**. We will not estimate it from wheelbase and a claimed steering angle — linkage backlash
-and real mechanical limits make the theoretical figure unreliable.
+We measured radius geometrically rather than estimating it from steering angle. At full lock, the
+vehicle drove until accumulated IMU heading reached 180°. We marked both rear tyre contact points
+at the start and end; each pair's midpoint is the rear axle centre, and the line between those
+midpoints is the circle diameter. The steering was centred before active braking so braking did
+not continue the arc. Settle heading was recorded on every run.
 
-Method (requires encoder and IMU working):
+| Direction and endpoint | Run chords | Mean chord | Radius |
+| --- | --- | ---: | ---: |
+| Left, 1480 µs | 989, 992, 1000 mm | 993 mm | **496 mm** |
+| Right, 1010 µs | 1008, 1008, 1006 mm | 1007 mm | **504 mm** |
 
-1. Command full lock to one side.
-2. Drive a slow, steady arc.
-3. Record arc length `s` from the encoder and heading change `Δθ` from the IMU.
-4. Compute `R = s / Δθ` (radians).
-5. Apply a track-width correction — the encoder is on one wheel, not on the centreline.
-6. **Repeat for the other lock direction.** The two will differ. Record both.
+The worse direction sets the design value: **`R = 504 mm`**. Settle headings were 183–186°, while
+the chord results remained consistent despite varying run time, confirming that radius is
+geometric rather than a speed constant.
 
-| Quantity | Value | Status |
-| --- | --- | --- |
-| Minimum turning radius, left lock | `[PENDING]` | `PENDING` |
-| Minimum turning radius, right lock | `[PENDING]` | `PENDING` |
-| Turning circle vs 600 mm corridor — does it fit? | `[PENDING]` | `PENDING` |
+With track width `w = 90 mm` and rear-axle-to-ToF-face overhang `L_f = 210 mm`:
 
-The last row is a go/no-go check. If the turning circle does not fit inside a 600 mm corridor, the
-Open Challenge is not completable and the steering throw or wheelbase must change. This is the
-single most important unmeasured number on the vehicle.
+| Swept-annulus quantity | Calculation | Result |
+| --- | --- | ---: |
+| Outer front corner, `R_o` | `sqrt((R + w/2)^2 + L_f^2)` | **588 mm** |
+| Inner rear corner, `R_i` | `R - w/2` | **459 mm** |
+| Swept width | `R_o - R_i` | **129 mm** |
+
+A single-arc 90° turn is **not feasible in the nominal 600 mm Open corridor**, and the
+International Final tolerance can narrow that corridor to 500 mm. The 1000 mm Open and Obstacle
+configurations are unaffected. We selected a multi-point turn for narrow Open rounds; it remains
+to be implemented and tested. Race-ready mass is still unmeasured.
 
 ---
 
@@ -759,7 +810,7 @@ what to do, and your body carries it out.
 
 - **The Brain layer** makes decisions. It takes information from the Senses layer and works out
   what to do next: stay centred in the corridor, recognise that a corner is coming and turn, count
-  laps, decide which side to pass a pillar, and run the parking manoeuvre. The Brain is built as a
+  laps, decide which side to pass a pillar, and exit the parking-lot start. The Brain is built as a
   state machine — the car is always in one defined state, and it moves between states based on what
   the sensors report. We kept this modular so a new behaviour can be added as a new state without
   rewriting everything, which matters because the rules note that a **surprise rule is expected in
@@ -801,19 +852,19 @@ parallel possible without constant breakage.
 src/
 ├── pico/
 │   ├── lib/                  BNO055 and PiicoDev VL53L1X drivers
-│   ├── tools/                IMU-offset and steering calibration tools
+│   ├── tools/                IMU-offset, steering and floor-centre calibration tools
 │   ├── tests/
-│   │   ├── i2c/              I2C and XSHUT scan
-│   │   ├── imu/              Heading, sign and drift tests
+│   │   ├── i2c/              I2C, XSHUT and bare-pin diagnostics
+│   │   ├── imu/              Heading, sign and drift tests, including rebuilt wiring
 │   │   ├── tof/              One- and five-ToF bring-up tests
-│   │   ├── motor/            Polarity, driver-state, duty-floor and floor tests
+│   │   ├── motor/            Polarity, duty, floor and braking-characterisation tests
 │   │   ├── steering/         Free-air and linkage sweep tests
-│   │   └── integration/      Combined Body and wheels-up interference tests
+│   │   └── integration/      System, wall-stop, straight-hold and turn-radius tests
 │   └── experiments/          Superseded or broken prototypes retained as evidence
 └── pi/                       Placeholder only; Pi 5 application code not uploaded yet
 ```
 
-There are currently **29 Pico Python files**. The detailed inventory, deployment instructions and
+There are currently **39 Pico Python files**. The detailed inventory, deployment instructions and
 known inconsistencies are in [`src/pico/README.md`](src/pico/README.md). In particular, the later
 measured scripts establish `FORWARD = -1` and `MIN_DUTY = 15%`; some earlier motor tests use the
 opposite direction label or raw PWM units and must not be mistaken for production firmware.
@@ -906,34 +957,27 @@ a time** — this is a team rule, not a suggestion.
 The randomised corridor width is the edge case most likely to catch us out, because everything
 works in testing until the round where it does not.
 
-## Control algorithm choice `PENDING`
+## Control algorithm choice `IN PROGRESS`
 
-We will start with **proportional only**, add a **derivative** term if the car oscillates, and add
-**integral only** if a persistent steady-state offset appears that P and D cannot remove.
-
-Reason for the ordering: an integral term accumulates error over time and can wind up during a
-turn, producing a delayed overshoot that looks like an unrelated bug. Adding terms one at a time,
-in response to an observed behaviour, keeps every gain traceable to the problem it solves.
+P-only heading hold is the accepted straight baseline: five runs produced 1.2–1.6° peak error,
+about 1.2° steady error and approximately 23 mm net lateral displacement over 2 m.
 
 | Gain | Value | Justification |
 | --- | --- | --- |
-| `Kp_heading` | `[PENDING]` | `[PENDING]` |
-| `Kp_offset` | `[PENDING]` | `[PENDING]` |
-| `Kd` | `[PENDING]` | `[PENDING]` |
+| `KP_US_PER_DEG` | 15 | Validated by straight-line runs |
+| `KI_US_PER_DEG_S` | **0** | A four-run `KI = 6` trial did not settle and could worsen results; integral action limit-cycles across the steering deadzone |
+| `KD` | 0 for the current baseline | Deferred until a real 90° corner step; use native `imu.gyro()` if damping proves necessary |
 
 ## Obstacle Challenge strategy `PENDING`
 
-**Detection pipeline, geometry-primary:**
+We selected **camera visual servoing** instead of adding two side-facing ToF sensors. The Pi sends
+`colour, x_norm, height_px`; the Pico maps pillar bearing to a heading-setpoint offset in the
+existing controller. Blob height provides a range cue because the pillar is a known 50 × 100 mm
+object. Red is passed on the right and green on the left (Rule 9.19).
 
-1. **ToF geometry detects that a pillar exists** and estimates where it is — a distance return
-   significantly closer than the expected wall distance, over a narrow angular span.
-2. **The camera classifies its colour**, which determines the passing side: red on the right, green
-   on the left (Rule 9.19).
-3. **The planner offsets the wall-following setpoint** to route past the correct side, then returns
-   to the nominal lane.
-
-Rationale for geometry-primary is in Section 4f: a colour misread should degrade us to "obstacle
-present, side uncertain" rather than "no obstacle".
+This avoids rewiring a vehicle with a known wiring-fault history and avoids additional XSHUT and
+I²C construction-order complexity. If the camera is lost, the vehicle falls back to wall
+following rather than continuing an unverified pillar offset.
 
 **Rule-driven tuning targets:**
 
@@ -947,7 +991,7 @@ present, side uncertain" rather than "no obstacle".
 
 | Task | Status |
 | --- | --- |
-| Pillar detection from ToF geometry | `PENDING` |
+| Pillar bearing and range cue from camera visual servo | `PENDING` |
 | Colour classification under bench lighting | `PENDING` |
 | Colour classification under varied lighting | `PENDING` |
 | Avoidance path that keeps pillars inside the 85 mm circle | `PENDING` |
@@ -955,35 +999,12 @@ present, side uncertain" rather than "no obstacle".
 | Late-correction behaviour before crossing the radius | `PENDING` |
 | Uncertain-colour fallback behaviour | `PENDING` |
 
-## Parallel parking `PENDING`
+## Parking scope
 
-The tightest geometric constraint in the project. Unlike corridor driving — where the car
-continuously corrects against wall references — parking is largely a committed sequence executed
-against measured distances.
-
-**The bay scales with our vehicle.** Rule §5: the parking lot is 200 mm wide and
-**1.5 × the length of our robot** long. A longer robot does not get an easier park — clearance
-stays at 0.5 × our own length either way — but a longer robot needs a larger turning radius to
-enter. **This is the argument for keeping the vehicle short.**
-
-**Rule 9.24.7: touching a parking lot limitation stops the round.** Unlike pillars, which tolerate
-movement inside an 85 mm circle, the parking limitations have zero tolerance. The manoeuvre must be
-tuned for clearance, and the rear ToF sensor exists for this reason.
-
-This is also why the wheel encoder matters. Open-loop timing is unreliable across battery states
-(Section 4f), and the bay tolerance is small enough that a few centimetres of distance error is the
-difference between 15 points and 7.
-
-**Approach:** a scripted manoeuvre parameterised by the **measured** minimum turning radius from
-Section 4d, with encoder-measured segment distances and IMU-measured heading changes as the
-termination condition for each phase.
-
-| Task | Status |
-| --- | --- |
-| Parking bay detected from ToF and magenta colour | `PENDING` |
-| Manoeuvre geometry derived from measured turning radius | `PENDING` |
-| Encoder-terminated segments implemented | `PENDING` |
-| Repeatability measured over 10 attempts | `PENDING` |
+Parking-in was descoped for the September competition plan. The **parking-lot start** remains:
+starting within the lot and completing at least one full lap earns 7 points under Rule 1.8.1, so
+the retained requirement is a reliable exit manoeuvre. The magenta limitations still must not be
+touched. Parking-in can be revisited after the 107-point retained scope is reliable.
 
 ---
 
@@ -1025,6 +1046,7 @@ Pi with a normal editor instead of over a bare terminal.
 | Python dependency list (`requirements.txt`) | `PENDING` |
 | Autostart on boot for competition runs | `PENDING` |
 | Step-by-step reproduction guide for a fresh Pi | `PENDING` |
+| Rule 11.10 Wi-Fi/Bluetooth disabled at boot and judge-verifiable | `PENDING — OPEN COMPLIANCE RISK` |
 
 ## Raspberry Pi Pico setup `IN PROGRESS`
 
@@ -1143,14 +1165,16 @@ faster than guessing, every time.
 | 13 | Paired dual-ToF baseline instead of a multizone sensor | Two points fully determine wall angle; simpler firmware and better per-reading SNR | Two mounts and two addresses per side |
 | 14 | Reflective optical encoder rather than timed open-loop or IMU integration | Timed control drifts with battery state; double-integrated acceleration drifts quadratically | Mechanical work: disc fabrication and mounting |
 | 15 | Split compute: Pi 5 for perception, Pico for control | OS scheduling jitter is unacceptable in a control loop; the Pico cannot run a camera | A serial link that can fail; two codebases |
-| 16 | Geometry-primary pillar detection, colour secondary | A colour misread degrades to "side unknown" rather than "no obstacle" — and Rule 13.18 warns venue colours will differ | More ToF processing work |
+| 16 | Use ToF geometry for walls and camera visual servoing for pillars | Camera bearing and blob height feed the proven heading controller without adding side-facing sensors or rewiring | Requires Pi integration and lighting validation; camera loss falls back to wall following |
 | 17 | ASCII serial protocol rather than binary | Human-readable during bring-up | Larger and slower — a deliberate prototype shortcut |
 | 18 | Verify sensor part number by model ID register | L0X and L1X boards are visually identical and often mislabelled | One line of code; no downside |
 | 19 | Construct the BNO055 last and restore saved offsets | PiicoDev ToF constructors reinitialise I²C and silently kill an earlier IMU object; streaming ToFs also prevent reliable live calibration | Initialisation order is load-bearing until all drivers share one bus object |
 | 20 | Fail safe on repeated invalid sensor reads | The first wall-stop continued into the wall when an unguarded ToF read failed to satisfy the stop condition | A false stop may end a run early, but continuing blind is worse |
 | 21 | Use Welford's method for streaming variance | The naive formula collapsed real ~1 mm ToF variation to `0.00` in MicroPython single precision | Slightly more state per metric |
 | 22 | Use a 45% / 300 ms kickstart, then drop to cruise | 20% sustains rolling motion but cannot reliably overcome floor breakaway friction | Brief acceleration before the requested cruise speed |
-| 23 | Use active braking and 35% duty as the development speed | Five 35% runs measured 126 ± 9 mm braking at 0.34 m/s; 45% required 293 mm with 30 mm SD | Less straight-line speed in exchange for predictable stopping and recovery room |
+| 23 | Use active braking with a conservative 700 mm trigger | Later runs braked in 210–250 mm and showed that fixed duty does not produce fixed speed | Earlier duty/braking data remains valid only for its measured run-ups; encoder speed control is deferred |
+| 24 | Keep integral gain at zero | Four `KI = 6` runs did not settle; steering deadzone produced a structural limit cycle | Accept measured P-only straight performance |
+| 25 | Use multi-point turns in narrow Open rounds | Measured design radius 504 mm makes a single 90° arc infeasible in a 600 mm corridor | Additional state and time cost; 1000 mm rounds unaffected |
 
 ## Decisions reversed after measurement
 
@@ -1172,6 +1196,10 @@ Recorded separately, because these are the entries that show the process working
 | Accept a printed ToF σ of `0.00` | Visible readings varied, proving the statistic was impossible; single-precision cancellation was the cause | Replaced the formula with Welford's streaming variance |
 | Explain the failed wall-stop as a brownout | Three stall trials held Pico VSYS at 4.87–4.89 V | Brownout rejected; the unguarded sensor read and fail-forward logic were identified |
 | Force SHORT mode through undocumented register writes | Full register attempts returned correct distances with `OutOfBoundsFail`; changing only the VCSEL periods reported 223 mm for a 403 mm target | Restored the driver's stock long-mode configuration; revisit SHORT only through a complete, behaviourally verified implementation |
+| Add integral action to remove the straight-line residual | Four `KI = 6` runs never settled and some were worse; backlash is a deadzone, not a constant bias | Integral removed permanently; `KI = 0` |
+| Treat 35% duty as a fixed 0.34 m/s operating point | One later run accelerated through 0.30, 0.48 and 0.54 m/s; braking later measured 210–250 mm | Earlier table retained as run-up-specific evidence; trigger raised to 700 mm |
+| Use one 90° arc in the 600 mm Open corridor | Three runs per direction measured 496/504 mm radii | Single arc rejected for narrow Open; multi-point turn selected |
+| Add two side-facing ToF sensors for pillar positioning | Camera bearing can drive a heading-setpoint offset without more wiring or XSHUT sequencing | Camera visual servoing selected; loss falls back to wall following |
 
 The last four rows are corrections to our own earlier documentation. We record them rather than
 quietly editing them out, because a design history that contains no reversals is not a history of
@@ -1194,17 +1222,19 @@ engineering.
 
 | Risk | Likelihood | Impact | Mitigation | Status |
 | --- | --- | --- | --- | --- |
-| Turning circle does not fit the 600 mm corridor | Unknown | Open Challenge not completable | Measure turning radius (Section 4d) — highest priority | `PENDING` |
+| Single-arc turn does not fit the 600 mm corridor | Confirmed | Narrow Open round fails | Multi-point turn selected; implement after validating 1000 mm cornering | `OPEN` |
 | Serial link between Pi and Pico drops | Medium | Vehicle uncontrolled | Pico-side watchdog stops the motor | `PENDING` |
 | Wall-following setpoint tuned only for 1000 mm | High | Fails in narrow rounds | Derive setpoint from measured corridor width; test both | `PENDING` |
-| Pi brown-out from motor or servo transient | Low | Round lost | Separate packs, separate bucks, star ground | `DONE` |
-| Colour thresholds fail at venue lighting (Rule 13.18) | High | Pillar passed on wrong side | Geometry-primary detection; on-site recalibration during testing rounds | `PENDING` |
+| Pi 5 has no dedicated physical power provision | High | Pi brownout or cannot be integrated | Add dedicated ≥3 A buck on separate star-grounded feed; retain intended dual-pack architecture | `OPEN` |
+| Pi 5 Wi-Fi/Bluetooth remains enabled or unverifiable (Rule 11.10) | High | Disqualification risk | Disable both at boot and prepare a seconds-long judge verification procedure | `OPEN` |
+| Race-ready mass exceeds 1.5 kg | Unknown | Rule non-compliance | Weigh the complete vehicle; mass has not yet been measured | `OPEN` |
+| Colour thresholds fail at venue lighting (Rule 13.18) | High | Pillar passed on wrong side | Validate camera bearing/colour under varied light; recalibrate during testing rounds | `PENDING` |
 | Touching a parking limitation (Rule 9.24.7) | Medium | Round stopped | Rear ToF; clearance-tuned manoeuvre | `PENDING` |
 | Outer wall contact in Open Challenge (Rule 9.18) | Medium | Round zero | Bias lane setpoint toward the inner wall | `PENDING` |
 | IMU heading drift over 3 laps | Medium | Turn accuracy degrades | Stationary calibration passed; measure moving drift and correct against wall references | `IN PROGRESS` |
 | Motor stall current exceeds the buck's limit | Unknown | Motor rail collapses at breakaway | Measure stall current at 5 V; bulk capacitance at the driver; soft-start ramp | `PENDING` |
 | Black walls absorb IR, degrading ToF returns | Unknown | Wall following unreliable — affects every round | Measure against real wall material at 300/600/1000 mm before deciding on ultrasonic redundancy | `PENDING` |
-| Invalid or physically impossible ToF read allows unsafe motion | Low | Vehicle continues toward a wall or brakes for a phantom target | Catch exceptions, check status and plausibility, reject >300 mm jumps, stop after five consecutive failures | `DONE — WALL-STOP TEST` |
+| Invalid or physically impossible ToF read allows unsafe motion | Low | Vehicle continues toward a wall or brakes for a phantom target | Catch exceptions, check status and plausibility, reject >120 mm jumps, stop after five consecutive failures | `DONE — 9 RUNS, NO FALSE REJECTS` |
 | Surprise rule announced (Rule §6) | Expected in 2026 | New behaviour required late | Modular state machine — a new behaviour is a new state | Design mitigates |
 | Time: integration starts too late | **High** | Untested system at competition | Serial link is the next milestone, ahead of new features | Active |
 
@@ -1219,7 +1249,8 @@ finishing subsystems that never get integrated in time to be tuned together.
 
 - Motor driver bring-up: free-run current ~140 mA; minimum reliable duty 15 % at 5 V / 1 kHz —
   and because the motor rail is now regulated to 5 V, these are valid operating figures
-- Servo calibration method established (current-draw criterion, both approach directions)
+- Steering calibration completed: safe endpoints 1480 µs left / 1010 µs right; centre restored to
+  1262 µs; backlash band ~1226–1286 µs
 - Steering conversion built and functional (servo in the old motor pocket, slotted horn, spoke to
   the original yoke on its original pivot post)
 - Five VL53L1X sensors on one I²C bus, XSHUT-sequenced, readdressed `0x30`–`0x34`
@@ -1228,41 +1259,49 @@ finishing subsystems that never get integrated in time to be tuned together.
 - Wheels-up motor-interference ladder passed through 70% duty and 1 Hz reversal: 100% valid
   reference-ToF reads, zero I²C errors and no measured heading drift
 - First untethered floor runs completed; worst measured 40%-duty coast distance 410 mm
-- Fail-safe wall-stop completed with 45% / 300 ms kickstart, active braking, status and jump checks;
-  35% selected provisionally after five runs measured 0.34 m/s and 126 ± 9 mm braking distance
+- Fail-safe wall-stop completed with 45% / 300 ms kickstart, active braking, a 700 mm trigger and
+  120 mm jump check; a 178 mm phantom was rejected with no false rejects across nine runs
+- P-only straight-line hold confirmed: 1.2–1.6° peak, ~1.2° steady, ~23 mm lateral over ~2 m;
+  integral trial removed permanently (`KI = 0`)
+- Track width measured at 90 mm (105 mm overall tyre width); `L_f = 210 mm` on the current mount
+- Turning radius measured over three runs each way: 496 mm left, 504 mm right; design `R = 504 mm`
+- Rewire bench verification passed, including bus/XSHUT, ToF stability, IMU calibration, servo
+  travel and `FORWARD = -1`
 - Compute rail measured at 4.87–4.89 V during three motor stall trials
 - Sensor part verified as VL53L1X by model ID register (`0x010F` = `0xEACC`)
 - ToF static characterization completed at 500/1000/1200 mm: σ 1.5/2.4/3.2 mm with 100% valid reads
 - Loop rate measured at ~555 loops/sec — retired three planned architectural workarounds
 - LiPo packs verified; charge and storage protocol established
-- Power architecture finalised: two packs, three bucks, star ground, servo on the actuator pack
+- Intended final power architecture retained: two packs, separate bucks and star ground; current
+  physical build still lacks the Pi 5's dedicated ≥3 A supply
 - Raspberry Pi 5 headless setup, SSH and Remote-SSH development working
 - Camera connected, MJPEG stream verified
 - Public GitHub repository with WRO template structure
 
 ## Immediate next steps, in priority order
 
-1. **Turning radius measurement** — the most important remaining geometry result; test both lock
-   directions and determine whether the car fits the 600 mm corridor
-2. **Steering play and asymmetric endpoints** — measure backlash and calibrate centre, left lock
-   and right lock before writing the steering controller
-3. **Complete the 25% braking set** — three more runs are needed before using its mean
-4. **On-car IMU drift and straight-line hold** — the stationary test is complete; motion is the
-   condition that matters
-5. **Encoder hardware** — fabricate disc, verify contrast, relocate TCRT5000, calibrate mm/count
-6. **Black-wall reflectivity test** — VL53L1X against real wall material at 300/600/1000 mm.
-   **Gates the ultrasonic redundancy decision; do not buy or fit anything before this runs**
-7. **Motor stall current at 5 V vs the buck's current limit** — completes the power budget and
-   tells us whether the motor rail can survive breakaway
-8. **Servo `LEFT_MAX` / `RIGHT_MAX`** — via the interactive calibration tool
-9. **Pi ↔ Pico serial link** — the first cross-controller integration milestone
-10. **Wall-following control loop** — the first full navigation behaviour
+1. **Corner validation:** five consecutive 90° corners in a 1000 mm corridor with **no
+   outer-wall contact**. Tune any derivative term only against this real step.
+2. **Narrow Open extension:** implement and test the selected multi-point turn after the 1000 mm
+   single-arc state is reliable.
+3. **Compliance closure:** weigh the complete vehicle against 1.5 kg; disable Pi 5 Wi-Fi and
+   Bluetooth with a judge-verifiable procedure.
+4. **Pi 5 integration:** install a dedicated ≥3 A buck on its own star-grounded feed, then complete
+   mount and UART soak test.
+5. Continue later open measurements: final L × W × H after brackets, on-car IMU drift, encoder
+   calibration, black-wall reflectivity and motor stall current.
 
 ## Commit schedule
 
-The rules require at least three commits, with the **third — no later than two weeks before the
-competition — being the one used for documentation scoring**. All important information must be
-present at that point.
+The rules require at least three commits, with the first at least two months before competition
+and containing at least one fifth of the final code. At the 15–17 August audit, this repository
+had **18 commits**, but the first contained no code, so the **1/5 code timing requirement was not
+met**. We will not rewrite history.
+
+The session assessment was specifically that the **national-level** repository is judged through
+the Appendix C rubric rather than the §7 dates; this is recorded as that event's assessment, not
+claimed as a universal exemption. Remaining commits and releases should use meaningful version
+messages that support the rubric's versioning and release-notes descriptor.
 
 | Commit | Deadline | Content |
 | --- | --- | --- |
@@ -1274,7 +1313,7 @@ present at that point.
 
 | Item | Requirement | Status |
 | --- | --- | --- |
-| Vehicle photos: front, rear, left, right, top, bottom | Rules §7 | `PENDING` |
+| Vehicle photos: front, rear, left, right, top, bottom | Rules §7 | `6 of 6 current views uploaded; re-shoot if final hardware changes` |
 | Team photo | Rules §7 | Uploaded |
 | Open Challenge video, ≥30 s autonomous driving | Rules §7 | `PENDING` |
 | Obstacle Challenge video, ≥30 s autonomous driving | Rules §7 | `PENDING` |
@@ -1376,8 +1415,9 @@ stops and the round is lost. Worse, it is an *intermittent* failure that only ap
 motor happens to draw hard at the wrong moment, so it survives bench testing and shows up on the
 field. The entire power design exists to make that failure impossible rather than unlikely.
 
-**Battery specifications:** two 3S LiPo packs, 11.1 V nominal / 12.6 V full, 3200 mAh, sourced
-locally from Electrobes Pakistan.
+**Battery specifications:** the intended final architecture uses two 3S LiPo packs, 11.1 V nominal
+/ 12.6 V full, 3200 mAh, sourced locally from Electrobes Pakistan. This architecture is not yet
+fully implemented: the current physical build has no dedicated Pi 5 supply.
 
 ### The rail layout
 
@@ -1394,8 +1434,9 @@ locally from Electrobes Pakistan.
                         (single common ground point)
 ```
 
-- **Rail 1 — compute.** Battery A through a TPS5450 buck to 5 V, feeding the Raspberry Pi 5, the
-  Pico, and the sensors. **Nothing that switches current abruptly is connected to this rail.**
+- **Rail 1 — compute (intended final build).** Battery A through a dedicated ≥3 A 5 V buck feeding
+  the Raspberry Pi 5 and camera, with the Pico and sensors on their logic supply and all returns
+  meeting at the star ground. The current LM2596 feeding the Pico must not also power the Pi 5.
 - **Rail 2 — drive.** Battery B through **its own TPS5450 buck to 5 V**, feeding the TB6612FNG,
   which drives the motor. The motor is rated 5 V, so the rail is regulated to match it rather than
   the motor being fed raw battery voltage and limited by duty cycle. The reasoning behind that
@@ -1568,7 +1609,7 @@ feeding data to the compute layer.
 | Sensor | Qty | Purpose | Status |
 | --- | --- | --- | --- |
 | **VL53L1X** time-of-flight | 6 | Wall distance and wall angle | 5 brought up `DONE`, 6th `PENDING` |
-| BNO055 IMU | 1 | Relative fused heading | Bench `DONE`; moving-car drift `PENDING` |
+| BNO055 IMU | 1 | Relative fused heading | Bench and straight hold `DONE`; 3-lap drift `PENDING` |
 | Reflective optical wheel encoder | 1 | Distance travelled | `PENDING` |
 | Raspberry Pi Camera Module 3 Wide | 1 | Pillar colour, line detection | `IN PROGRESS` |
 
@@ -1776,14 +1817,18 @@ solution uses the `XSHUT` (shutdown) pin:
 
 | Item | Assignment |
 | --- | --- |
-| I²C bus | I²C0, SDA = GP8, SCL = GP9 |
+| Current rebuilt I²C bus | I²C1, SDA = GP6, SCL = GP7 |
+| Retired I²C pins | GP9 is known damaged; GP8 is unused. Historical tests retain I²C0 GP8/GP9 for traceability |
 | Bus speed | 100 kHz for five-device bring-up; 400 kHz for the two-sensor performance test |
 | XSHUT control pins | GP10 – GP14 |
 | Assigned ToF addresses | `0x30`, `0x31`, `0x32`, `0x33`, `0x34` |
 | IMU on the same bus | BNO055 at `0x28` — verified |
 
-> **Note we keep repeating to ourselves:** GPIO number is not physical pin number. `GP8` is not
-> pin 8. Read the pinout diagram every time.
+> **Note we keep repeating to ourselves:** GPIO number is not physical pin number. `GP6` is not
+> pin 6. Read the pinout diagram every time.
+
+The GP6/GP7 assignment describes the current rebuilt test vehicle. The team may use a new Pico for
+the final production build, so the final controller and bus pins will be confirmed at that stage.
 
 #### Addressing faults found during bring-up
 
@@ -1816,6 +1861,14 @@ The final 100 kHz bring-up scan was:
 All five ToF sensors then returned distances in the same loop with zero I²C errors. Covering each
 sensor separately changed only that sensor's value while the others held their distant target,
 proving independent addressing rather than five objects responding as one.
+
+#### Post-rewire bench verification, 15–17 August `DONE`
+
+The rebuilt harness passed staged checks before floor testing: bus idle levels, scans with ToF in
+reset, XSHUT control, ToF release at `0x29`, and final addressing all passed. One ToF produced
+`n = 20`, mean **102 mm**, spread **2 mm**, with **zero bad reads**. Gyro and accelerometer
+calibration remained **3/3**, the servo reached both locks without binding, and motor direction
+`FORWARD = -1` was reconfirmed. This evidence supports the conclusion that the rewire is sound.
 
 With all five sensors packed side by side and aimed in nearly the same direction, a flat hand at
 about 110 mm produced an approximately 20 mm edge-to-edge disagreement. Hand angle explains part
@@ -1899,8 +1952,8 @@ two points fully determine. The extra zones would be unused complexity.
 | Front | 1 | Corner detection, stop distance | `PENDING` |
 | Rear | 1 | Parking and reversing reference | `PENDING` |
 
-The rear sensor exists specifically for the parking manoeuvre, where the vehicle reverses into a
-bay bounded by magenta limitations that Rule 9.24.7 forbids us to touch.
+The rear sensor was originally planned for parking-in, which is now descoped. It remains a possible
+future aid but is not required for the retained parking-lot start.
 
 Placement will be finalised from corridor geometry and confirmed by test, not guessed. The
 baseline separation `L` must be measured precisely once mounted — the angle calculation depends
@@ -1909,7 +1962,7 @@ directly on it.
 > **Sensor placement diagram to be added:** `schemes/sensor_placement.png`
 > Top view with field-of-view cones and the baseline separation dimensioned.
 
-### BNO055 Inertial Measurement Unit `DONE — BENCH; MOTION TEST PENDING`
+### BNO055 Inertial Measurement Unit `DONE — STRAIGHT HOLD; 3-LAP DRIFT PENDING`
 
 The BNO055 performs gyro and accelerometer fusion on-chip. We selected `IMUPLUS_MODE`, deliberately
 disabling the magnetometer because the motor, wiring and LiPo packs produce local magnetic fields
@@ -1924,6 +1977,16 @@ north, which suits a track defined from the vehicle's start orientation.
 **What we explicitly do not use it for:** distance, by double-integrating acceleration. Integrating
 noisy acceleration twice produces error that grows quadratically with time. This is a known dead
 end, not a tuning problem — which is why the encoder exists.
+
+#### Mounting orientation, heading sign and gyro units
+
+With the vehicle level, 30 averaged gravity samples measured **x = +0.05, y = −0.22,
+z = +9.80 m/s²**. The board is flat, component side up, so yaw is axis 2.
+
+A right turn crossed the heading wrap from **359.94° to 31.81°** and `ang_diff` correctly returned
+**+31.88°**, reconfirming clockwise-positive heading. `UNIT_SEL` register `0x3B` read **0x80**,
+which means gyro units are degrees per second. The retained constants are **`GYRO_AXIS = 2`** and
+**`GYRO_SIGN = +1`**; the measured right-turn peak was **+53.94°/s**.
 
 #### Address configuration and the cold-boot trap
 
@@ -1985,10 +2048,14 @@ The adopted sequence is:
 This is a prototype constraint, not the ideal final design. Production firmware should create one
 shared I²C object and pass it to every driver so no constructor can silently reset the bus.
 
-#### Stationary drift and heading convention
+#### Stationary drift, false fault and heading convention
 
-The first apparently perfect drift attempt was invalid: heading stayed exactly `0.00°` while the
-accelerometer remained uncalibrated, indicating that useful fusion output was not being produced.
+A post-rewire diagnostic incorrectly failed a stationary **0.00°** heading after IMUPLUS power-on.
+That is correct behaviour: without the unused magnetometer, IMUPLUS has no absolute heading
+reference and zeroes relative heading at startup. For the same reason, `sys = 0` is normal in this
+mode and is not an IMU failure. Liveness must be checked by applying rotation and observing a
+change, not by requiring a stationary non-zero value.
+
 After requiring both gyro and accelerometer level 3 and verifying that rotation changed heading,
 the 60-second stationary test produced:
 
@@ -2000,9 +2067,8 @@ the 60-second stationary test produced:
 This is a stationary result only. Acceleration, cornering and vibration contaminate the gravity
 reference, so on-car drift over a known path remains `TODO: measure`.
 
-Manual rotation established a clockwise-positive convention: a right rotation produced `+8.75°`
-and a left rotation `−7.75°`. Captured readings also crossed `359.94° → 0.00°`, demonstrating why
-raw subtraction is unsafe. Every heading difference must be folded into ±180°.
+Manual rotation established a clockwise-positive convention. The later right-turn test above
+reconfirmed it across the 0°/360° boundary. Every heading difference must be folded into ±180°.
 
 #### Wheels-up motor-interference test
 
@@ -2118,8 +2184,9 @@ the camera resource locked and requires a reboot to clear. This cost us time onc
 
 | Function | Controller | Pin | Status |
 | --- | --- | --- | --- |
-| I²C0 SDA (ToF + IMU) | Pico | GP8 | `DONE` |
-| I²C0 SCL (ToF + IMU) | Pico | GP9 | `DONE` |
+| I²C1 SDA (ToF + IMU), rebuilt vehicle | Pico | GP6 | `DONE` |
+| I²C1 SCL (ToF + IMU), rebuilt vehicle | Pico | GP7 | `DONE` |
+| Retired I²C0 SDA / SCL | Pico | GP8 / GP9 | GP8 unused; GP9 damaged; legacy scripts only |
 | ToF XSHUT ×5 | Pico | GP10 – GP14 | `DONE` |
 | Steering servo PWM | Pico | GP0, 50 Hz | `DONE` |
 | Motor PWM (TB6612FNG PWMA) | Pico | GP2, 1 kHz | `DONE` |
@@ -2150,13 +2217,13 @@ any number in this document can be traced back to the test that produced it.
 | --- | --- | --- | --- |
 | Motor transient browns out the Pi | Round lost | Two packs, separate bucks, star ground | `DONE` |
 | Servo transient reaches compute rail | Round lost | Servo on its own buck off the actuator pack | `DONE` |
-| ToF returns invalid or impossible reading | Controller acts on garbage distance or continues toward a wall | Check status and plausibility, reject >300 mm jumps and stop after five consecutive failures | `DONE — WALL-STOP TEST` |
+| ToF returns invalid or impossible reading | Controller acts on garbage distance or continues toward a wall | Check status and plausibility, reject >120 mm jumps and stop after five consecutive failures | `DONE — 9 RUNS, NO FALSE REJECTS` |
 | Bright venue light degrades ToF | Range collapses | Stock LONG mode retained after failed SHORT trials; test at venue and implement SHORT only with full behavioural validation | `PENDING` |
 | Black wall absorbs IR, weakening ToF return | Wall distance unreliable | Measure against real wall material; ultrasonic redundancy only if measurement justifies it | `PENDING` |
 | Motor stall current exceeds buck limit | Motor rail collapses at breakaway | Measure stall current; bulk capacitance; soft-start ramp | `PENDING` |
 | I²C bus lockup | All sensors lost at once | Timeout detection, bus reset, re-run XSHUT init | `PENDING` |
 | IMU heading drift over 3 laps | Turns become inaccurate | Stationary test passed; measure moving drift and correct against wall references | `IN PROGRESS` |
-| Colour thresholds fail at venue (Rule 13.18) | Wrong pillar side chosen | Geometry-primary detection; on-site recalibration | `PENDING` |
+| Colour thresholds fail at venue (Rule 13.18) | Wrong pillar side chosen | Validate camera bearing/colour under varied light; on-site recalibration | `PENDING` |
 | Encoder disc contrast insufficient | No distance feedback | Verify contrast before final mounting | `PENDING` |
 | Pack flat mid-round | Round lost | Voltage monitoring and a pre-round checklist | `PENDING` |
 
